@@ -1,0 +1,559 @@
+/* =========================================================
+   1. ESTILOS BASE Y VARIABLES
+   ========================================================= */
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a24; color: #e0e0e0; margin: 0; padding: 0; }
+.contenedor-vistas { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* =========================================================
+   2. CABECERA Y NAVEGACIÓN
+   ========================================================= */
+.cabecera-principal { background-color: #111118; padding: 20px; text-align: center; border-bottom: 2px solid #4CAF50; }
+.cabecera-principal h1 { margin: 0 0 15px 0; color: #4CAF50; font-size: 2.5rem; }
+.menu-navegacion { display: flex; justify-content: center; gap: 15px; }
+.btn-tab { background-color: #252533; color: #aaa; border: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 1rem; }
+.btn-tab:hover { background-color: #3f3f5a; color: white; }
+.btn-tab.activo { background-color: #4CAF50; color: white; }
+
+/* =========================================================
+   3. BOTONES Y MODALES GLOBALES
+   ========================================================= */
+.btn-accion { background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.btn-accion:hover { background-color: #45a049; }
+.btn-accion.naranja { background-color: #FF9800; }
+.btn-accion.naranja:hover { background-color: #e68a00; }
+.btn-accion.pequeno { padding: 5px 10px; font-size: 0.8rem; }
+.btn-accion.rojo { background-color: #F44336; }
+
+.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 100; }
+.contenido-modal { background-color: #252533; padding: 30px; border-radius: 8px; width: 450px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; position: relative; }
+.btn-cerrar-modal { position: absolute; top: 15px; right: 20px; font-size: 2rem; color: #888; cursor: pointer; transition: 0.2s ease; line-height: 1; z-index: 10; }
+.btn-cerrar-modal:hover { color: #F44336; transform: scale(1.1); }
+.grupo-input { margin-bottom: 15px; }
+.grupo-input label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem; }
+.grupo-input input, .grupo-input select, .grupo-input textarea { width: 100%; padding: 8px; box-sizing: border-box; background-color: #1a1a24; border: 1px solid #3f3f5a; color: white; border-radius: 4px; }
+.botones-modal { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+/* Terminales de Datapad (Formularios) */
+.datapad-container { background-color: #0b0b10 !important; border: 1px solid #4CAF50 !important; border-top: 15px solid #4CAF50 !important; box-shadow: 0 0 30px rgba(76, 175, 80, 0.15) !important; }
+.datapad-nav { display: flex; border-bottom: 2px solid #1a1a24; margin-bottom: 20px; }
+.btn-dp-tab { flex: 1; background: transparent; color: #666; border: none; padding: 12px; cursor: pointer; font-weight: bold; border-bottom: 3px solid transparent; transition: all 0.3s ease; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
+.btn-dp-tab:hover { color: #aaa; background-color: rgba(255,255,255,0.05); }
+.btn-dp-tab.activo { color: #4CAF50; border-bottom: 3px solid #4CAF50; background-color: rgba(76, 175, 80, 0.05); }
+.dp-seccion { animation: fadeIn 0.4s ease; }
+
+/* =========================================================
+   4. BARRACONES Y TROPAS (GRID Y CARRUSEL)
+   ========================================================= */
+#dashboard-barracones { display: flex; gap: 20px; }
+#columna-lista { flex: 1.2; background-color: transparent; height: fit-content; }
+#columna-detalle { flex: 1.5; }
+
+.contenedor-lideres { display: flex; flex-direction: column; gap: 10px; }
+.grupo-lider { background-color: #1a1a24; padding: 8px; border-radius: 8px; border: 1px solid #3f3f5a; }
+.cabecera-lider { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; cursor: pointer; transition: 0.2s ease; }
+.cabecera-lider:hover { background-color: #3f3f5a; }
+.icono-acordeon { display: inline-block; transition: transform 0.3s ease; font-size: 0.9rem; margin-right: 8px; color: #4CAF50; }
+.icono-acordeon.colapsado { transform: rotate(-90deg); color: #888; }
+.contador-tropas { background-color: #4CAF50; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+
+/* Carrusel Oculto nativo */
+.grid-tropas { display: flex; padding: 15px 15px 25px 15px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.grid-tropas::-webkit-scrollbar { display: none; }
+.contenedor-carrusel { position: relative; width: 100%; }
+.btn-scroll { position: absolute; top: 45%; transform: translateY(-50%); background: rgba(17, 17, 24, 0.95); color: #fff; border: 1px solid #4CAF50; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; z-index: 20; display: flex; justify-content: center; align-items: center; font-size: 1rem; box-shadow: 0 0 10px rgba(0,0,0,0.8); transition: all 0.3s ease; opacity: 0; pointer-events: none; }
+.btn-scroll.izq { left: 0px; }
+.btn-scroll.der { right: 0px; }
+.contenedor-carrusel:hover .btn-scroll { opacity: 1; }
+.btn-scroll:hover { background: #4CAF50; color: #111; transform: translateY(-50%) scale(1.15); }
+
+/* Chapas Militares (Efecto Baraja) */
+.chapa-militar { flex: 0 0 100px; background: linear-gradient(145deg, #252533, #1a1a24); border: 1px solid #3f3f5a; border-radius: 6px; padding: 10px 5px; text-align: center; cursor: pointer; transition: all 0.3s ease; position: relative; margin-left: -25px; z-index: 1; box-shadow: -5px 0 10px rgba(0,0,0,0.5); }
+.chapa-militar:first-child { margin-left: 0; }
+.chapa-militar:hover { transform: translateY(-15px) rotate(-2deg); border-color: #4CAF50; z-index: 10 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.8); }
+.chapa-militar.seleccionada { border-color: #4CAF50; background: linear-gradient(145deg, #2a332a, #1a1a24); transform: translateY(-15px); z-index: 9; }
+.chapa-foto { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; border: 2px solid #555; margin-bottom: 5px; background-color: #111; }
+.chapa-militar h4 { font-size: 0.75rem !important; margin: 0 0 2px 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+.chapa-militar p { font-size: 0.65rem !important; margin: 0; color: #888;}
+.chapa-estado { position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+.estado-Activo { background-color: #4CAF50; box-shadow: 0 0 8px #4CAF50; }
+.estado-Herido { background-color: #FF9800; box-shadow: 0 0 8px #FF9800; }
+.estado-KIA { background-color: #F44336; box-shadow: 0 0 8px #F44336; }
+.chapa-nivel { 
+    position: absolute; 
+    top: 5px;     /* Lo bajamos ligeramente hacia la foto */
+    left: 2px;   /* Lo empujamos hacia el centro para que pise la imagen */
+    background: #9C27B0; 
+    color: white; 
+    font-size: 0.7rem; 
+    font-weight: bold; 
+    padding: 2px 5px; 
+    border-radius: 4px; 
+    z-index: 5;   /* CRÍTICO: Esto lo pone en una capa por encima de la foto */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.8); /* Sombra extra para que resalte sin importar el color de la foto */
+}
+
+/* Drag & Drop Visuales Generales */
+.chapa-militar.drop-left, .casilla-item.drop-target-left { box-shadow: -4px 0 0 0 #4CAF50 !important; border-left-color: transparent !important; }
+.chapa-militar.drop-right, .casilla-item.drop-target-right { box-shadow: 4px 0 0 0 #4CAF50 !important; border-right-color: transparent !important; }
+.zona-drop.drag-over { background-color: rgba(76, 175, 80, 0.1) !important; border: 1px dashed #4CAF50; }
+
+/* Tarjeta Dossier y Stats de Soldado */
+.tarjeta-soldado { background-color: #252533; border-radius: 8px; padding: 25px; box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
+.cabecera-tarjeta { display: flex; gap: 20px; align-items: center; padding-bottom: 0; margin-bottom: 0; border: none; }
+.datos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.dato-item { background-color: #1a1a24; padding: 10px; border-radius: 5px; }
+.etiqueta { font-size: 0.8rem; color: #888; text-transform: uppercase; display: block; margin-bottom: 3px;}
+.valor { font-weight: bold; font-size: 1.1rem; }
+.contenedor-medallas { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
+.medalla-rango { font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #111; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+
+.foto-soldado {
+    width: 120px;
+    height: 120px;
+    object-fit:cover;
+    border-radius: 8px;
+    border-width: 2px;
+    border-style: solid;
+    border-color: rgb(76, 175, 80);
+    border-image: initial;
+}
+
+/* Dashboard Generales (Home) */
+.dashboard-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; background: rgba(17, 17, 24, 0.6); padding: 25px; border-radius: 8px; border: 1px dashed #3f3f5a; }
+.stat-box { text-align: center; padding: 15px; background: #252533; border-radius: 6px; border-bottom: 3px solid #4CAF50; }
+.stat-box h3 { margin: 0; font-size: 2rem; color: #fff; }
+.stat-box p { margin: 5px 0 0 0; font-size: 0.8rem; color: #aaa; text-transform: uppercase; }
+
+
+/* =========================================================
+   5. ARMERÍA - INVENTARIO IZQUIERDO
+   ========================================================= */
+.mini-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+.mini-tab-btn { flex: 1; background: #1a1a24; border: 1px solid #3f3f5a; color: #aaa; padding: 8px 5px; cursor: pointer; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+.mini-tab-btn.activo { background: #00BCD4; color: #fff; border-color: #022529; }
+
+/* 1. GRILLA DENSA: Achicamos el tamaño base y el gap para que entren muchos más */
+.grid-inventario { 
+    display: grid; 
+    /* Bajamos de 65px a 55px el ancho mínimo, y el gap de 12px a 4px */
+    grid-template-columns: repeat(auto-fill, minmax(55px, 1fr)); 
+    gap: 4px; 
+    padding: 15px 10px; /* Buen padding para que al hacer zoom no se corten los bordes */
+}
+
+/* 2. LA CASILLA BASE: Más compacta y con una transición de "rebote" */
+.casilla-item { 
+    width: 100%; /* Se adapta a la columna de 55px */
+    height: 55px; 
+    background-color: rgba(10, 15, 30, 0.8); 
+    border: 1px solid #23304a; 
+    border-radius: 4px; 
+    position: relative; 
+    cursor: grab; 
+    
+    /* Esta transición (cubic-bezier) le da ese efecto elástico/fluido al hacer hover */
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27); 
+    
+    display: flex; justify-content: center; align-items: center; 
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5); 
+    z-index: 1; /* Capa base */
+}
+
+.casilla-item img { width: 85%; height: 85%; object-fit: contain; }
+.casilla-item.sin-stock { opacity: 0.3; cursor: not-allowed; filter: grayscale(100%); }
+
+
+.casilla-item:active { cursor: grabbing; transform: scale(0.95); }
+.casilla-item.sin-stock { opacity: 0.3; cursor: not-allowed; filter: grayscale(100%); }
+.casilla-item.sin-stock:hover { transform: none; border-color: #F44336; box-shadow: none; }
+.casilla-item img { width: 85%; height: 85%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); }
+
+.badge-stock { position: absolute; bottom: -6px; right: -6px; background-color: #4CAF50; color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 12px; font-weight: bold; border: 2px solid #1a1a24; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+.badge-stock.vacio { background-color: #F44336; }
+
+/* Menú Engranaje Oculto */
+.casilla-opciones { position: absolute; top: -8px; left: -8px; background: #555; border-radius: 50%; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; font-size: 0.7rem; cursor: pointer; opacity: 0; transition: 0.2s; border: 2px solid #1a1a24; }
+.casilla-item:hover .casilla-opciones { opacity: 1; }
+.casilla-opciones:hover { background: #FF9800; transform: scale(1.2); }
+
+/* Listas Home Armeria */
+.resumen-categorias { display: flex; flex-direction: column; gap: 15px; text-align: left; max-width: 400px; margin: 20px auto; background: rgba(0, 0, 0, 0.3); padding: 20px; border-radius: 8px; border: 1px solid #3f3f5a; }
+.categoria-titulo { font-size: 1.1rem; font-weight: bold; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.subcategoria-lista { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: #aaa; }
+.subcategoria-lista li { display: flex; justify-content: space-between; padding: 2px 0; }
+
+
+/* =========================================================
+   6. ARMERÍA - ESTACIÓN MANIQUÍ (DIABLO STYLE)
+   ========================================================= */
+.estacion-equipamiento {
+    background: linear-gradient(145deg, #252533, #1a1a24); border-radius: 8px; padding: 20px;
+    border-top: 5px solid #00BCD4; height: 680px; display: flex; flex-direction: column;
+}
+
+/* --- DIABLO III INVENTORY SYSTEM --- */
+
+.d3-container {
+    display: flex;
+    background-image: url("./assets/Background.png");
+    /* --- AGREGAR ESTAS LÍNEAS --- */
+    background-size: cover;       /* Cubre todo el espacio */
+    background-position: left; /* Centra la imagen */
+    background-repeat: no-repeat;
+    /* ---------------------------- */
+    border: 2px solid #2a2a35;
+    border-radius: 8px;
+    padding: 15px;
+    height: 500px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: inset 0 0 60px rgba(0, 0, 0, 1);
+}
+
+/* LA COLUMNA IZQUIERDA */
+.d3-left-col { 
+    width: 35%; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    
+    /* --- ELIMINAR LINEA PUNTEADA --- */
+    border-right: none !important; /* Quitamos la separación */
+    
+    padding-right: 20px; 
+    z-index: 5; 
+    padding: 15px; 
+    
+    /* Mantenemos el fondo pero sin borde */
+    background-image: url("/assets/background_para_silueta_solamente.png");
+    background-size: 95% 90%;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+/* Textos brillantes para la zona oscura */
+.d3-left-col h3 { color: #00E5FF !important; text-shadow: 0 0 5px rgba(0,229,255,0.4); }
+.d3-left-col p { color: #B2EBF2 !important; font-weight: bold; }
+.d3-left-col span { color: #00E5FF !important; }
+
+
+/* --- TOOLTIP TÁCTICO PARA INVENTARIO IZQUIERDO --- */
+.casilla-item::after { 
+    content: attr(data-tooltip); 
+    position: absolute; 
+    bottom: 110%; /* Aparece por encima del objeto */
+    left: 50%; 
+    transform: translateX(-50%); 
+    background: rgba(10, 15, 30, 0.95); 
+    color: #B2EBF2; 
+    /* Letra muy pequeña (0.55rem) porque la casilla crecerá un 50% con el hover */
+    font-size: 0.55rem; 
+    padding: 8px; 
+    border: 1px solid #00E5FF; 
+    border-radius: 4px; 
+    width: max-content; 
+    max-width: 150px; 
+    text-align: left; 
+    pointer-events: none; 
+    white-space: pre-wrap; 
+    z-index: 100; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.8); 
+    font-family: monospace; 
+    
+    /* Efecto de aparición */
+    opacity: 0; 
+    transition: opacity 0.2s ease; 
+}
+
+/* Solo se vuelve visible cuando el ratón está encima */
+.casilla-item:hover::after { 
+    opacity: 1; 
+}
+
+/* CONTENEDOR DE LA DERECHA (EL MANIQUÍ) */
+.d3-right-col { 
+    width: 65%; 
+    position: relative; 
+    display: flex; 
+    justify-content: center; 
+}
+
+.d3-retrato { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #9C27B0; margin-top: 12%; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+
+/* Panel de Stats oscuro translúcido */
+.d3-stats { 
+    background-color: rgba(10, 15, 30, 0.65) !important; /* Azul marino muy oscuro */
+    border: 1px solid rgba(0, 229, 255, 0.3) !important; 
+    border-radius: 8px; width: 100%; text-align: center; 
+    margin-bottom: 0px; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.4); 
+}
+.d3-stats h2 { color: #00E5FF !important; text-shadow: 0 0 10px rgba(0,229,255,0.5) !important; }
+
+.diablo-silueta {
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 95%; 
+    object-fit: contain; 
+    transform: scale(0.9);
+    pointer-events: none; 
+    z-index: 1;
+
+    /* --- TRUCO MAGICO PARA QUITAR EL FONDO BLANCO --- */
+    mix-blend-mode: multiply !important; /* El blanco desaparece, lo oscuro se queda */
+}
+
+/* Slots de Objetos más sólidos y visibles */
+.d3-slot {
+    position: absolute; width: 65px; height: 65px;
+    background-color: #1a4d95af !important; /* Un azul noche casi opaco */
+    border: 1px solid #00E5FF !important;
+    border-radius: 4px; z-index: 10; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease; 
+    box-shadow: 0 4px 10px rgba(32, 96, 214, 0.812), inset 0 0 10px rgba(0, 229, 255, 0.582);
+}
+.d3-slot.static { position: relative !important; margin: 5px; display: inline-flex; width: 85px; height: 85px; }
+
+/* LA PLATAFORMA (Soporte Físico) */
+.plataforma-base {
+    position: absolute;
+    bottom: 10%; /* Alineada justo abajo */
+    left: 68%;
+    transform: translateX(-50%);
+    width: 280px; /* Un poco más ancha */
+    height: 100px;
+    background-image: url('/assets/base_silueta.png'); /* PNG de tu plataforma */
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center bottom; /* Alineada abajo */
+    z-index: 2;
+    
+    /* Sombra de contacto negra para darle peso 3D */
+    filter: drop-shadow(0 10px 10px rgba(82, 77, 213, 0.737));
+    pointer-events: none;
+}
+
+/* 2. TU NUEVO HAZ DE LUZ TRANSPARENTE */
+.plataforma-base::after {
+    content: "";
+    position: absolute;
+    bottom: 30%; /* Ajusta este porcentaje para que nazca justo de la chapa de tu plataforma */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;  /* Base más ancha para cubrir la plataforma */
+    height: 250px; /* Sube hasta la mitad del cuerpo */
+    
+    /* GRADIENTE LINEAL: Fuerte abajo (0%), tenue al medio (50%), invisible arriba (100%) */
+    background: linear-gradient(to top, rgba(63, 127, 201, 0.718) 0%, rgba(53, 125, 164, 0.3) 0%, transparent 100%);
+    
+    /* MAGIA TÁCTICA: Corta el rectángulo en forma de haz de luz (más estrecho arriba) */
+    clip-path: polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%);
+    
+    /* Suaviza los bordes del corte para que no se vea como un triángulo perfecto */
+    filter: blur(20px);
+    
+    z-index: 3; 
+    pointer-events: none;
+}
+
+/* --- CAPA 1: PLACEHOLDERS (::before) --- */
+.d3-slot::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background-size: 100% 100%; background-repeat: no-repeat; background-position: center;
+    opacity: 0.7; z-index: 1; pointer-events: none; transition: all 0.2s;
+    
+    /* LA MAGIA: Esto elimina el fondo negro del icono cuadrado y deja solo el dibujo */
+    mix-blend-mode: screen; 
+    filter: grayscale(100%);
+}
+
+/* 1. CREAMOS LA ANIMACIÓN DE PULSO DE ENERGÍA */
+@keyframes radarPulso {
+    0% { box-shadow: 0 0 30px rgba(0, 229, 255, 0.776), inset 0 0 100px rgba(0, 229, 255, 0.3); }
+    50% { box-shadow: 0 0 50px rgba(0, 229, 255, 1), inset 0 0 125px rgba(0, 229, 255, 0.8); }
+    100% { box-shadow: 0 0 30px rgba(0, 229, 255, 0.75), inset 0 0 100px rgba(0, 229, 255, 0.3); }
+}
+
+/* 2. ACTUALIZAMOS LA CLASE DEL SLOT VÁLIDO */
+.d3-slot.highlight-valid { 
+    border: 2px solid #00E5FF !important; /* Borde al doble de grosor */
+    background-color: rgba(0, 229, 255, 0.3) !important; /* Fondo cian más notorio */
+    z-index: 25; 
+    
+    /* Aplicamos el latido de luz infinito */
+    animation: radarPulso 1s infinite ease-in-out !important; 
+   } 
+
+.d3-slot.highlight-valid::before { opacity: 0.8; filter: none; } /* Ilumina el icono de fondo */
+@keyframes radar-pulse {
+    0% { box-shadow: 0 0 15px rgba(0, 188, 212, 0.4), inset 0 0 10px rgba(0, 188, 212, 0.2); }
+    50% { box-shadow: 0 0 25px rgba(0, 188, 212, 0.8), inset 0 0 25px rgba(0, 188, 212, 0.5); }
+    100% { box-shadow: 0 0 15px rgba(0, 188, 212, 0.4), inset 0 0 10px rgba(0, 188, 212, 0.2); }
+}
+
+/* Ocultar el fantasma si hay objeto equipado */
+.d3-slot[data-equipped-id]:not([data-equipped-id=""])::before { display: none; }
+
+/* Mapeo de Assets Locales */
+#slot-cabeza::before { background-image: url('/assets/head_slot.png'); } 
+#slot-arma::before { background-image: url('/assets/melee_weapon_slot.png'); }
+#slot-armadura::before { background-image: url('/assets/armor_slot.png'); }
+#slot-util1::before, #slot-util2::before { background-image: url('/assets/items_baul.png'); } 
+#slot-arma_sec::before { background-image: url('/assets/arma_rango.png'); }
+#slot-hombros::before { background-image: url('/assets/cloak.png'); }
+#slot-cinturon::before { background-image: url('/assets/legs_slot.png'); }
+#slot-botas::before { background-image: url('/assets/boots_slot.png'); }
+#slot-amuleto::before { background-image: url('/assets/emerald-necklace.png'); }
+#slot-anillo1::before, #slot-anillo2::before { background-image: url('/assets/ring.png'); }
+
+/* --- SISTEMA DE COLORES DE RAREZA (D&D / LOOT) --- */
+.d3-slot { border: 1px solid rgba(15, 15, 16, 0.4); } /* Borde por defecto para vacíos */
+
+.rareza-comun { border-color: rgba(170, 170, 170, 0.6) !important; }
+.rareza-comun img { filter: drop-shadow(0 0 2px #aaa); }
+
+.rareza-poco-comun { border-color: rgba(76, 175, 80, 0.8) !important; box-shadow: inset 0 0 10px rgba(76,175,80,0.2) !important;}
+.rareza-poco-comun img { filter: drop-shadow(0 0 3px #4CAF50); }
+
+.rareza-raro { border-color: rgba(0, 188, 212, 0.8) !important; box-shadow: inset 0 0 10px rgba(0,188,212,0.2) !important;}
+.rareza-raro img { filter: drop-shadow(0 0 3px #00BCD4); }
+
+.rareza-muy-raro { border-color: rgba(156, 39, 176, 0.8) !important; box-shadow: inset 0 0 10px rgba(156,39,176,0.2) !important;}
+.rareza-muy-raro img { filter: drop-shadow(0 0 4px #9C27B0); }
+
+.rareza-legendario { border-color: rgba(255, 152, 0, 1) !important; box-shadow: inset 0 0 15px rgba(255,152,0,0.3) !important;}
+.rareza-legendario img { filter: drop-shadow(0 0 5px #FF9800); }
+
+/* 3. EL EFECTO POP-UP (CENTRAMIENTO PERFECTO) */
+.casilla-item:hover { 
+    /* Solo dejamos el scale y eliminamos el translateY */
+    transform: scale(1.5); 
+    
+    /* Forzamos a que el crecimiento sea exactamente desde el centro */
+    transform-origin: center center; 
+    
+    /* Salta al frente de TODOS los demás objetos de la grilla */
+    z-index: 50; 
+    
+    border-color: #00E5FF; 
+    background-color: #0b0f19; 
+    
+    /* Mantenemos la sombra para que se despegue del fondo visualmente */
+    box-shadow: 0 15px 25px rgba(0,0,0,0.9), inset 0 0 15px rgba(0, 229, 255, 0.4); 
+}
+
+/* Efecto Hover potenciado por rareza */
+.casilla-item:hover, .d3-slot.unlocked[data-equipped-id]:hover {
+    transform: scale(1.08); z-index: 20;
+    background-color: rgba(0,0,0,0.8);
+}
+/* Bordes tácticos de los Placeholders y de las Imágenes reales */
+#slot-arma::before, #slot-arma img, #slot-arma_sec::before, #slot-arma_sec img { border: 2px solid rgba(244, 67, 54, 0.4); } 
+#slot-armadura::before, #slot-armadura img, #slot-cabeza::before, #slot-cabeza img, #slot-hombros::before, #slot-hombros img, #slot-botas::before, #slot-botas img { border: 2px solid rgba(0, 188, 212, 0.4); } 
+#slot-util1::before, #slot-util1 img, #slot-util2::before, #slot-util2 img, #slot-cinturon::before, #slot-cinturon img, #slot-amuleto::before, #slot-amuleto img, #slot-anillo1::before, #slot-anillo1 img, #slot-anillo2::before, #slot-anillo2 img { border: 2px solid rgba(76, 175, 80, 0.4); }
+
+/* --- CAPA 2: EFECTOS Y ESTADO DE LA IMAGEN REAL --- */
+.d3-slot.unlocked { cursor: pointer; }
+.d3-slot.unlocked:hover::before, .d3-slot.unlocked:hover img {
+    border-color: rgb(255, 255, 255) !important;
+    box-shadow: 0 0 15px rgba(253, 253, 253, 0.3);
+    transform: scale(1.1);
+}
+
+.d3-slot img { width: 100%; height: 100%; object-fit: contain; padding: 5px; box-sizing: border-box; background-color: rgba(10,10,15,0.9); border-radius: 4px; position: relative; z-index: 2; transition: all 0.2s; }
+
+/* Botón Borrar (X) */
+.btn-quitar-item { position: absolute; top: -6px; right: -6px; background-color: #F44336; color: white; border-radius: 50%; width: 22px; height: 22px; font-size: 0.75rem; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 20; opacity: 0; transition: all 0.2s ease; box-shadow: 0 2px 5px rgba(0,0,0,0.8); border: 2px solid #1a1a24; }
+.d3-slot:hover .btn-quitar-item { opacity: 1; }
+.btn-quitar-item:hover { transform: scale(1.15); background-color: #ff5252; }
+
+/* --- CAPA 3: EL TOOLTIP Y CANDADOS (::after) --- */
+.d3-slot.unlocked:hover::after {
+    content: attr(data-tooltip);
+    position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+    background: rgba(17, 17, 24, 0.95); color: #fff; font-size: 0.75rem;
+    padding: 8px; border: 1px solid #9C27B0; border-radius: 4px;
+    width: max-content; max-width: 200px; text-align: center; pointer-events: none;
+    white-space: pre-wrap; z-index: 100;
+}
+
+.d3-slot.locked::before { opacity: 0.25; }
+.d3-slot.locked::after {
+    content: ""; position: absolute; width: 32px; height: 32px;
+    background-image: url('/assets/locked-padlock-with-chain.png');
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    z-index: 2; opacity: 0.65;
+    filter: invert(0.7) sepia(0.5) saturate(2) hue-rotate(350deg);
+    pointer-events: none;
+}
+
+/* --- BOTÓN RECLUTAR / FORJAR RETRÁCTIL --- */
+.btn-reclutar-mini {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 4px 8px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    max-width: 25px; /* Tamaño inicial (solo el +) */
+    white-space: nowrap;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+.btn-reclutar-mini:hover {
+    max-width: 130px; /* Se expande al pasar el mouse */
+    padding: 4px 12px;
+}
+
+.btn-reclutar-mini .icono {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.btn-reclutar-mini .texto {
+    opacity: 0;
+    max-width: 0;
+    transition: all 0.3s ease;
+    margin-left: 0;
+    font-size: 0.8rem;
+}
+
+.btn-reclutar-mini:hover .texto {
+    opacity: 1;
+    max-width: 100px;
+    margin-left: 6px;
+}
+
+/* =========================================================
+   7. RESPONSIVIDAD (MÓVILES)
+   ========================================================= */
+@media (max-width: 768px) {
+    .cabecera-principal h1 { font-size: 1.8rem; }
+    .cabecera-principal > div { position: static !important; display: flex; justify-content: center; margin-top: 10px; }
+    .menu-navegacion { flex-wrap: wrap; gap: 8px; padding: 0 10px; }
+    .btn-tab { padding: 8px 10px; font-size: 0.85rem; flex: 1 1 45%; text-align: center; }
+    #dashboard-barracones, .estacion-equipamiento { flex-direction: column; height: auto; }
+    #columna-detalle { order: -1; margin-bottom: 20px; }
+    .d3-container { flex-direction: column; height: 800px; }
+    .d3-left-col { width: 100%; border-right: none; border-bottom: 2px dashed rgba(255,255,255,0.15); padding-right: 0; padding-bottom: 20px; margin-bottom: 20px; }
+    .d3-right-col { width: 100%; height: 500px; }
+}
+
+/* --- ETIQUETAS DE HABILIDADES (PERKS) --- */
+.perk-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    font-weight: bold;
+}
+.perk-badge.base { background: #3f3f5a; border: 1px solid #888; color: #eee; }
+.perk-badge.eq { background: rgba(0, 188, 212, 0.2); border: 1px solid #00BCD4; color: #00BCD4; }
