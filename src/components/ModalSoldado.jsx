@@ -12,6 +12,9 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
     const { recargarTodo, escuadrones } = useData();
     const [tabActiva, setTabActiva] = useState('personal');
     
+    // LA SOLUCIÓN: Solo estamos editando si el soldado tiene un ID real asignado.
+    const esEdicion = soldadoData && soldadoData.id;
+
     // Estado inicial del formulario vacío
     const estadoInicial = {
         nombre: '', nombre_clave: '', rango: '', clase: '', nivel: 1, xp: 0, clases_extra: '',
@@ -26,11 +29,12 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
     // Cuando el modal se abre o cambian los datos, rellenamos el formulario
     useEffect(() => {
         if (soldadoData) {
-            setFormData({ ...estadoInicial, ...soldadoData, atributos: { ...estadoInicial.atributos, ...soldadoData.atributos } });
+            // Rellena con los datos. Si es nuevo, solo pondrá la facción. El (soldadoData.atributos || {}) evita errores.
+            setFormData({ ...estadoInicial, ...soldadoData, atributos: { ...estadoInicial.atributos, ...(soldadoData.atributos || {}) } });
         } else {
             setFormData(estadoInicial);
         }
-        setTabActiva('personal'); // Siempre abrimos en la primera pestaña
+        setTabActiva('personal'); 
     }, [soldadoData, isOpen]);
 
     // Función genérica para actualizar los campos de texto
@@ -64,15 +68,15 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (soldadoData) {
-                // Modo Editar
+            if (esEdicion) {
+                // Modo Editar (Solo entra aquí si tiene ID)
                 await updateDoc(doc(db, "soldados", soldadoData.id), formData);
             } else {
-                // Modo Reclutar
+                // Modo Reclutar (Entra aquí para los nuevos)
                 await addDoc(collection(db, "soldados"), formData);
             }
-            await recargarTodo(); // Actualiza la RAM de la app
-            onClose(); // Cierra el modal
+            await recargarTodo(); 
+            onClose(); 
         } catch (error) {
             console.error("Error al guardar soldado:", error);
             alert("Error en la transmisión de datos.");
@@ -84,19 +88,14 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
         if (!window.confirm(`¿Estás seguro de licenciar y dar de baja a ${soldadoData.nombre}? Esta acción es irreversible.`)) return;
         
         try {
-            // 1. Si era comandante de un escuadrón, le quitamos el título
             if (soldadoData.escuadron_id) {
                 const esc = escuadrones.find(e => e.id === soldadoData.escuadron_id);
                 if (esc && esc.comandante_id === soldadoData.id) {
                     await updateDoc(doc(db, "escuadrones", esc.id), { comandante_id: null });
                 }
             }
-            
-            // 2. Ejecutar la baja militar
             await deleteDoc(doc(db, "soldados", soldadoData.id));
             await recargarTodo();
-            
-            // 3. Avisar a Barracones que cierre todo
             if (onDelete) onDelete(); 
         } catch (error) {
             console.error("Error al eliminar soldado:", error);
@@ -104,24 +103,23 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
         }
     };
 
-    if (!isOpen) return null; // Si no está abierto, no renderiza nada en el HTML
+    if (!isOpen) return null;
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal datapad-container" style={{ width: '750px', maxWidth: '95vw', borderColor: soldadoData ? '#FF9800' : '#4CAF50', borderTopColor: soldadoData ? '#FF9800' : '#4CAF50' }}>
+            <div className="contenido-modal datapad-container" style={{ width: '750px', maxWidth: '95vw', borderColor: esEdicion ? '#FF9800' : '#4CAF50', borderTopColor: esEdicion ? '#FF9800' : '#4CAF50' }}>
                 <span className="btn-cerrar-modal" onClick={onClose} title="Cancelar">&times;</span>
-                <h2 style={{ color: soldadoData ? '#FF9800' : '#4CAF50', marginTop: 0, textTransform: 'uppercase', letterSpacing: '2px' }}>
-                    {soldadoData ? 'Modificar Expediente Militar' : 'Terminal de Registro Militar'}
+                <h2 style={{ color: esEdicion ? '#FF9800' : '#4CAF50', marginTop: 0, textTransform: 'uppercase', letterSpacing: '2px' }}>
+                    {esEdicion ? 'Modificar Expediente Militar' : 'Terminal de Registro Militar'}
                 </h2>
                 
-                <div className="datapad-nav" style={soldadoData ? { borderBottomColor: '#5c3a00' } : {}}>
+                <div className="datapad-nav" style={esEdicion ? { borderBottomColor: '#5c3a00' } : {}}>
                     <button type="button" className={`btn-dp-tab ${tabActiva === 'personal' ? 'activo' : ''}`} onClick={() => setTabActiva('personal')}>👤 Datos Personales</button>
                     <button type="button" className={`btn-dp-tab ${tabActiva === 'combate' ? 'activo' : ''}`} onClick={() => setTabActiva('combate')}>⚔️ Perfil Combate</button>
                     <button type="button" className={`btn-dp-tab ${tabActiva === 'expediente' ? 'activo' : ''}`} onClick={() => setTabActiva('expediente')}>📁 Expediente y Lore</button>
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    {/* --- PESTAÑA PERSONAL --- */}
                     {tabActiva === 'personal' && (
                         <div className="dp-seccion">
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -135,47 +133,31 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                                     <div className="grupo-input"><label>Facción Titular:</label><input type="text" name="lider" value={formData.lider} onChange={handleChange} placeholder="Ej: William, Cazador..." required /></div>
                                     <div className="grupo-input"><label>URL Fotografía:</label><input type="url" name="foto" value={formData.foto} onChange={handleChange} placeholder="https://..." /></div>
                                     
-    <div className="grupo-input" style={{ background: '#323245', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #F44336', marginTop: '10px' }}>
-        <label style={{ color: '#F44336', margin: '0 0 5px 0', display: 'block' }}>Panel Médico (Control GM)</label>
-        
-        <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ flex: 2 }}>
-                <span style={{ fontSize: '0.7rem', color: '#aaa', textTransform: 'uppercase' }}>Gravedad</span>
-                <select 
-                    name="estado_salud" 
-                    value={formData.estado_salud || 'Sano'} 
-                    onChange={handleChange}
-                    style={{ width: '100%', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', outline: 'none' }}
-                >
-                    <option value="Sano">Sano (100% TR)</option>
-                    <option value="Leve">Leve (80% TR)</option>
-                    <option value="Media">Media (60% TR)</option>
-                    <option value="Grave">Grave (35% TR)</option>
-                    <option value="Gravísima">Gravísima (0% TR)</option>
-                    <option value="Muerto">K.I.A. (0% TR)</option>
-                </select>
-            </div>
-            
-            <div style={{ flex: 1 }}>
-                <span style={{ fontSize: '0.7rem', color: '#aaa', textTransform: 'uppercase' }}>Días Reposo</span>
-                <input 
-                    type="number" 
-                    name="dias_recuperacion" 
-                    value={formData.dias_recuperacion || ''} 
-                    onChange={handleChange} 
-                    placeholder="Ej: 5"
-                    min="0"
-                    style={{ width: '100%', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', outline: 'none' }}
-                />
-            </div>
-        </div>
-    </div>
+                                    <div className="grupo-input" style={{ background: '#323245', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #F44336', marginTop: '10px' }}>
+                                        <label style={{ color: '#F44336', margin: '0 0 5px 0', display: 'block' }}>Panel Médico (Control GM)</label>
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <div style={{ flex: 2 }}>
+                                                <span style={{ fontSize: '0.7rem', color: '#aaa', textTransform: 'uppercase' }}>Gravedad</span>
+                                                <select name="estado_salud" value={formData.estado_salud || 'Sano'} onChange={handleChange} style={{ width: '100%', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', outline: 'none' }}>
+                                                    <option value="Sano">Sano (100% TR)</option>
+                                                    <option value="Leve">Leve (80% TR)</option>
+                                                    <option value="Media">Media (60% TR)</option>
+                                                    <option value="Grave">Grave (35% TR)</option>
+                                                    <option value="Gravísima">Gravísima (0% TR)</option>
+                                                    <option value="Muerto">K.I.A. (0% TR)</option>
+                                                </select>
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <span style={{ fontSize: '0.7rem', color: '#aaa', textTransform: 'uppercase' }}>Días Reposo</span>
+                                                <input type="number" name="dias_recuperacion" value={formData.dias_recuperacion || ''} onChange={handleChange} placeholder="Ej: 5" min="0" style={{ width: '100%', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', outline: 'none' }} />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* --- PESTAÑA COMBATE --- */}
                     {tabActiva === 'combate' && (
                         <div className="dp-seccion">
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -189,7 +171,7 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                                     <div className="grupo-input"><label>Arma de Preferencia:</label><input type="text" name="arma_principal" value={formData.arma_principal} onChange={handleChange} /></div>
                                 </div>
                                 <div style={{ backgroundColor: '#111118', padding: '15px', borderRadius: '8px', border: '1px solid #3f3f5a' }}>
-                                    <label style={{ color: soldadoData ? '#FF9800' : '#4CAF50', fontSize: '1rem', display: 'block', marginBottom: '15px', textTransform: 'uppercase', textAlign: 'center', letterSpacing: '1px' }}>Escáner de Atributos</label>
+                                    <label style={{ color: esEdicion ? '#FF9800' : '#4CAF50', fontSize: '1rem', display: 'block', marginBottom: '15px', textTransform: 'uppercase', textAlign: 'center', letterSpacing: '1px' }}>Escáner de Atributos</label>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                                         <div className="grupo-input" style={{ margin: 0 }}><label style={{ textAlign: 'center', color: '#aaa' }}>STR</label><input type="number" name="str" value={formData.atributos.str} onChange={handleChange} style={{ textAlign: 'center', fontSize: '1.2rem' }} /></div>
                                         <div className="grupo-input" style={{ margin: 0 }}><label style={{ textAlign: 'center', color: '#aaa' }}>DEX</label><input type="number" name="dex" value={formData.atributos.dex} onChange={handleChange} style={{ textAlign: 'center', fontSize: '1.2rem' }} /></div>
@@ -197,15 +179,12 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                                         <div className="grupo-input" style={{ margin: 0 }}><label style={{ textAlign: 'center', color: '#aaa' }}>INT</label><input type="number" name="int" value={formData.atributos.int} onChange={handleChange} style={{ textAlign: 'center', fontSize: '1.2rem' }} /></div>
                                         <div className="grupo-input" style={{ margin: 0 }}><label style={{ textAlign: 'center', color: '#aaa' }}>WIS</label><input type="number" name="wis" value={formData.atributos.wis} onChange={handleChange} style={{ textAlign: 'center', fontSize: '1.2rem' }} /></div>
                                         <div className="grupo-input" style={{ margin: 0 }}><label style={{ textAlign: 'center', color: '#aaa' }}>CHA</label><input type="number" name="cha" value={formData.atributos.cha} onChange={handleChange} style={{ textAlign: 'center', fontSize: '1.2rem' }} /></div>
-                                    
-                                    
                                     </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* --- PESTAÑA EXPEDIENTE --- */}
                     {tabActiva === 'expediente' && (
                         <div className="dp-seccion">
                             <div className="grupo-input"><label>Alineamiento Psicológico:</label><input type="text" name="alineamiento" value={formData.alineamiento} onChange={handleChange} /></div>
@@ -218,14 +197,14 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                         </div>
                     )}
 
-                    <div className="botones-modal" style={{ marginTop: '25px', borderTop: '1px solid #1a1a24', paddingTop: '15px', justifyContent: soldadoData ? 'space-between' : 'flex-end' }}>
-                        {soldadoData && (
+                    <div className="botones-modal" style={{ marginTop: '25px', borderTop: '1px solid #1a1a24', paddingTop: '15px', justifyContent: esEdicion ? 'space-between' : 'flex-end' }}>
+                        {esEdicion && (
                             <button type="button" className="btn-accion rojo" onClick={handleDelete}>
                                 Licenciar (Eliminar Soldado)
                             </button>
                         )}
-                        <button type="submit" className={`btn-accion ${soldadoData ? 'naranja' : ''}`} style={{ fontSize: '1.1rem', padding: '10px 20px', backgroundColor: soldadoData ? '#FF9800' : '#4CAF50' }}>
-                            💾 {soldadoData ? 'Guardar Cambios' : 'Guardar Expediente'}
+                        <button type="submit" className={`btn-accion ${esEdicion ? 'naranja' : ''}`} style={{ fontSize: '1.1rem', padding: '10px 20px', backgroundColor: esEdicion ? '#FF9800' : '#4CAF50' }}>
+                            💾 {esEdicion ? 'Guardar Cambios' : 'Guardar Expediente'}
                         </button>
                     </div>
                 </form>
