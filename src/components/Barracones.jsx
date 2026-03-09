@@ -4,6 +4,56 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ModalSoldado from './ModalSoldado';
 
+
+import { collection, addDoc } from 'firebase/firestore';
+
+// Funcion inyectar soldados (secreto)
+const inyectarBatallon = async () => {
+    const confirmacion = window.confirm("¿Autorizar el despliegue de 20 soldados de prueba en la base de datos?");
+    if (!confirmacion) return;
+
+    const facciones = ["H", "Cazador", "Lucian", "Brick", "William"];
+    const reclutas = [
+        { nombre: "Alen Kwit", nombre_clave: "Sombra", rango: "Infiltrado", clase: "Ladrón", nivel: 10, xp: 64000, lider: "H", genero: "Masculino", estado_salud: "Leve", atributos: { str: 12, dex: 20, con: 14, int: 13, wis: 10, cha: 8 }, operaciones: 11, exitos: 10, medallas: { SS: 0, S: 1, A: 3, B: 4, C: 2, D: 0, E: 0 } },
+        { nombre: "Mille Aray", nombre_clave: "Oro", rango: "Médico", clase: "Clérigo", nivel: 5, xp: 6500, lider: "William", genero: "Femenino", estado_salud: "Sano", atributos: { str: 8, dex: 12, con: 10, int: 14, wis: 18, cha: 14 }, operaciones: 3, exitos: 3, medallas: { SS: 0, S: 0, A: 0, B: 0, C: 1, D: 2, E: 0 } },
+        { nombre: "At-Niss Bane", nombre_clave: "Raíz", rango: "Exploradora", clase: "Ranger", nivel: 8, xp: 34000, lider: "Cazador", genero: "Femenino", estado_salud: "Sano", atributos: { str: 12, dex: 16, con: 12, int: 14, wis: 16, cha: 10 }, operaciones: 7, exitos: 6, medallas: { SS: 0, S: 0, A: 1, B: 2, C: 3, D: 0, E: 0 } },
+        { nombre: "Garr Tan-Uk", nombre_clave: "Bestia", rango: "Berserker", clase: "Bárbaro", nivel: 9, xp: 48000, lider: "Brick", genero: "Masculino", estado_salud: "Media", atributos: { str: 20, dex: 12, con: 18, int: 8, wis: 10, cha: 9 }, operaciones: 9, exitos: 7, medallas: { SS: 0, S: 0, A: 1, B: 3, C: 3, D: 0, E: 0 } },
+        { nombre: "Ubis Tawaty", nombre_clave: "Gema", rango: "Maestra", clase: "Monje", nivel: 14, xp: 140000, lider: "H", genero: "Femenino", estado_salud: "Sano", atributos: { str: 18, dex: 16, con: 16, int: 14, wis: 16, cha: 12 }, operaciones: 25, exitos: 24, medallas: { SS: 1, S: 3, A: 10, B: 5, C: 5, D: 0, E: 0 } },
+        { nombre: "Teferi Sever", nombre_clave: "Reloj", rango: "Soporte", clase: "Cronoforjador", nivel: 11, xp: 85000, lider: "Lucian", genero: "Masculino", estado_salud: "Sano", atributos: { str: 8, dex: 10, con: 12, int: 18, wis: 18, cha: 15 }, operaciones: 13, exitos: 12, medallas: { SS: 0, S: 1, A: 4, B: 5, C: 2, D: 0, E: 0 } },
+        { nombre: "Maru Kinall", nombre_clave: "Ruleta", rango: "Cazador", clase: "Especialista", nivel: 12, xp: 100000, lider: "William", genero: "Masculino", estado_salud: "Muerto", atributos: { str: 14, dex: 18, con: 14, int: 16, wis: 14, cha: 12 }, operaciones: 16, exitos: 14, medallas: { SS: 0, S: 2, A: 5, B: 5, C: 2, D: 0, E: 0 } },
+        { nombre: "Kuna Enes", nombre_clave: "Golem", rango: "Defensor", clase: "Artífice", nivel: 10, xp: 64000, lider: "Brick", genero: "Otro", estado_salud: "Sano", atributos: { str: 18, dex: 8, con: 20, int: 16, wis: 12, cha: 8 }, operaciones: 11, exitos: 10, medallas: { SS: 0, S: 0, A: 2, B: 4, C: 4, D: 0, E: 0 } },
+        { nombre: "Dash Pavan", nombre_clave: "Hilo", rango: "Cirujana", clase: "Médico de Combate", nivel: 9, xp: 48000, lider: "H", genero: "Femenino", estado_salud: "Sano", atributos: { str: 12, dex: 18, con: 12, int: 14, wis: 16, cha: 10 }, operaciones: 10, exitos: 9, medallas: { SS: 0, S: 0, A: 2, B: 4, C: 3, D: 0, E: 0 } },
+        { nombre: "Orar Typhe", nombre_clave: "Conde", rango: "Inquisidor", clase: "Sanguinario", nivel: 12, xp: 100000, lider: "Lucian", genero: "Masculino", estado_salud: "Leve", atributos: { str: 16, dex: 14, con: 16, int: 14, wis: 12, cha: 16 }, operaciones: 14, exitos: 13, medallas: { SS: 0, S: 1, A: 4, B: 5, C: 3, D: 0, E: 0 } },
+        { nombre: "Sham Maden", nombre_clave: "Humo", rango: "Veterano", clase: "Controlador", nivel: 13, xp: 120000, lider: "William", genero: "Masculino", estado_salud: "Sano", atributos: { str: 14, dex: 12, con: 18, int: 16, wis: 18, cha: 14 }, operaciones: 18, exitos: 17, medallas: { SS: 1, S: 2, A: 6, B: 5, C: 3, D: 0, E: 0 } },
+        { nombre: "Redarr Tille", nombre_clave: "Piedra", rango: "Herrera", clase: "Geo-Maga", nivel: 8, xp: 34000, lider: "Cazador", genero: "Femenino", estado_salud: "Sano", atributos: { str: 16, dex: 12, con: 16, int: 12, wis: 10, cha: 14 }, operaciones: 7, exitos: 6, medallas: { SS: 0, S: 0, A: 1, B: 3, C: 2, D: 0, E: 0 } }
+    ];
+
+    try {
+        for (const soldado of reclutas) {
+            // Completamos los campos faltantes para que coincidan con tu base de datos
+            const soldadoCompleto = {
+                ...soldado,
+                alineamiento: "Neutral", arma_principal: "", clases_extra: "",
+                descripcion: "Expediente generado automáticamente.", dias_herido: 0, dias_recuperacion: "",
+                estado_actual: "Activo", foto: "https://via.placeholder.com/150/323245/888888?text=RECLUTA",
+                escuadron_id: null, motivaciones: "", otros: "", rasgos: "", veces_salvado: 0,
+                equipo: { arma: "", armadura: "", cabeza: "", util1: "", util2: "" },
+                puntos_prestigio: 0 // Añadido para el nuevo Salón de la Fama
+            };
+            await addDoc(collection(db, "soldados"), soldadoCompleto);
+        }
+        alert("¡Batallón desplegado con éxito! Recarga la página para ver a los nuevos reclutas.");
+    } catch (error) {
+        console.error("Error en despliegue masivo:", error);
+        alert("Error en las comunicaciones. Revisa la consola.");
+    }
+};
+
+
+
+
+
+
 const TABLA_XP_DND = [
     0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 
     85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000
@@ -35,6 +85,41 @@ export default function Barracones() {
 
     // Estado del Acordeón (Guarda qué facciones están ocultas)
     const [faccionesColapsadas, setFaccionesColapsadas] = useState({});
+
+// Duncion calibrador de Veteranos (Secreto)
+const calibrarPrestigioVeteranos = async () => {
+    const confirmacion = window.confirm("¿Establecer prestigio base para los soldados existentes según su historial?");
+    if (!confirmacion) return;
+
+    try {
+        for (const soldado of soldados) {
+            let ptsEstimados = 0;
+            
+            // Sumamos puntos por operaciones exitosas base (+3 pts por éxito aprox)
+            const exitos = Number(soldado.exitos || 0);
+            ptsEstimados += exitos * 3;
+
+            // Premiamos con puntos pesados según las medallas que ya tengan
+            if (soldado.medallas) {
+                ptsEstimados += (Number(soldado.medallas['SS'] || 0) * 15);
+                ptsEstimados += (Number(soldado.medallas['S'] || 0) * 10);
+                ptsEstimados += (Number(soldado.medallas['A'] || 0) * 7);
+                ptsEstimados += (Number(soldado.medallas['B'] || 0) * 4);
+                // C, D y E casi no suman prestigio en la calibración retroactiva
+            }
+
+            // Si tienen prestigio 0, les asignamos este cálculo estimado
+            if (!soldado.puntos_prestigio || soldado.puntos_prestigio === 0) {
+                await updateDoc(doc(db, "soldados", soldado.id), { 
+                    puntos_prestigio: ptsEstimados 
+                });
+            }
+        }
+        alert("¡Calibración de Veteranos completada! El Salón de la Fama está actualizado.");
+    } catch (error) {
+        console.error("Error al calibrar:", error);
+    }
+};
 
     // 2. VIGILANTE DE ACTUALIZACIÓN AUTOMÁTICA
     // Si editas al soldado en el modal, esto refresca la tarjeta apenas Firebase guarde los datos.
@@ -281,14 +366,92 @@ export default function Barracones() {
                 {/* COLUMNA DERECHA: Dossier */}
                 <div id="columna-detalle" style={{ flex: 1.5 }}>
                     {!soldadoSeleccionado ? (
-                        <div className="dashboard-resumen">
-                            <div className="stat-box"><h3>{soldados.length}</h3><p>Soldados</p></div>
-                            <div className="stat-box" style={{ borderColor: '#F44336' }}><h3>{soldados.filter(s => s.estado_salud && s.estado_salud.toLowerCase() !== 'sano').length}</h3><p>Bajas / Heridos</p></div>
+                        <div className="dashboard-ranking" style={{ animation: 'fadeIn 0.4s ease' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
+                                <div>
+                                    <h2 style={{ margin: 0, color: '#00BCD4', textTransform: 'uppercase', letterSpacing: '1px' }}>🏆 Salón de la Fama</h2>
+                                    <span style={{ color: '#888', fontSize: '0.85rem' }}>Clasificación de Prestigio Operativo</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '15px' }}>
+                                    <div style={{ textAlign: 'right' }}><span style={{ color: '#aaa', fontSize: '0.75rem', display: 'block' }}>Efectivos Totales</span><strong style={{ color: '#fff', fontSize: '1.2rem' }}>{soldados.length}</strong></div>
+                                    <div style={{ textAlign: 'right', borderLeft: '1px solid #333', paddingLeft: '15px' }}><span style={{ color: '#aaa', fontSize: '0.75rem', display: 'block' }}>Bajas / Heridos</span><strong style={{ color: '#F44336', fontSize: '1.2rem' }}>{soldados.filter(s => s.estado_salud && s.estado_salud.toLowerCase() !== 'sano').length}</strong></div>
+                                </div>
+                            </div>
+
+                            <div className="ranking-lista" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {/* Encabezados de la tabla */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '40px 2.5fr 1fr 1fr 1.5fr', gap: '10px', padding: '0 10px', color: '#888', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold', borderBottom: '1px solid #333', paddingBottom: '5px', marginBottom: '5px' }}>
+                                    <div style={{ textAlign: 'center' }}>Rnk</div>
+                                    <div>Operativo</div>
+                                    <div style={{ textAlign: 'center' }}>Prestigio</div>
+                                    <div style={{ textAlign: 'center' }}>Efectividad</div>
+                                    <div style={{ textAlign: 'center' }}>Historial (Top)</div>
+                                </div>
+
+                                {/* Ordenamos los soldados por prestigio (o nivel si no tienen), y tomamos los top 10 */}
+                                {[...soldados]
+                                    .sort((a, b) => (b.puntos_prestigio || b.nivel || 0) - (a.puntos_prestigio || a.nivel || 0))
+                                    .slice(0, 10)
+                                    .map((soldado, index) => {
+                                        const mTotales = soldado.operaciones || 0;
+                                        const mExito = soldado.exitos || 0;
+                                        const pctExito = mTotales > 0 ? Math.round((mExito / mTotales) * 100) : 0;
+                                        const pts = soldado.puntos_prestigio || 0;
+                                        
+                                        // Extraemos las medallas más altas que tenga (Solo de B hacia arriba)
+                                        const medallasStr = ['SS', 'S', 'A', 'B'].filter(r => soldado.medallas && soldado.medallas[r] > 0).map(r => `${r}:${soldado.medallas[r]}`).join(' | ') || '-';
+
+                                        // Colores para el top 3
+                                        let rankColor = '#323245';
+                                        let rankText = '#aaa';
+                                        if (index === 0) { rankColor = '#FFD700'; rankText = '#000'; } // Oro
+                                        if (index === 1) { rankColor = '#C0C0C0'; rankText = '#000'; } // Plata
+                                        if (index === 2) { rankColor = '#CD7F32'; rankText = '#000'; } // Bronce
+
+                                        return (
+                                            <div key={soldado.id} onClick={() => setSoldadoSeleccionado(soldado)} style={{ display: 'grid', gridTemplateColumns: '40px 2.5fr 1fr 1fr 1.5fr', gap: '10px', alignItems: 'center', backgroundColor: '#1a1a24', padding: '8px 10px', borderRadius: '6px', borderLeft: `3px solid ${rankColor === '#323245' ? '#333' : rankColor}`, cursor: 'pointer', transition: 'transform 0.2s' }}>
+                                                
+                                                <div style={{ backgroundColor: rankColor, color: rankText, width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.9rem', margin: '0 auto' }}>
+                                                    {index + 1}
+                                                </div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                                                    <img src={soldado.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} alt={soldado.nombre} style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #444' }} />
+                                                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        <strong style={{ display: 'block', color: '#fff', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{soldado.nombre}</strong>
+                                                        <span style={{ color: '#888', fontSize: '0.7rem' }}>{soldado.rango}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ textAlign: 'center', color: '#00BCD4', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                                                    {pts} <span style={{ fontSize: '0.6rem', color: '#555' }}>PTS</span>
+                                                </div>
+
+                                                <div style={{ textAlign: 'center' }}>
+                                                    <span style={{ color: pctExito >= 80 ? '#4CAF50' : pctExito >= 50 ? '#FF9800' : '#F44336', fontWeight: 'bold' }}>{pctExito}%</span>
+                                                    <span style={{ display: 'block', color: '#666', fontSize: '0.65rem' }}>{mExito}/{mTotales} Ops</span>
+                                                </div>
+
+                                                <div style={{ textAlign: 'center', color: '#FF9800', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '1px' }}>
+                                                    {medallasStr}
+                                                </div>
+
+                                            </div>
+                                        );
+                                    })}
+                            </div>
                         </div>
                     ) : (
                         <div className="tarjeta-soldado" style={{ display: 'block', position: 'sticky', top: '20px', borderTop: `5px solid ${configSalud.color}` }}>
                             <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px', zIndex: 10 }}>
                                 <button className="btn-accion pequeno" style={{ backgroundColor: '#333' }} onClick={() => setSoldadoSeleccionado(null)}>⬅ Volver</button>
+                                
+                                {/* BOTÓN DE ATAJO A LA ARMERÍA */}
+                                <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
+                                    localStorage.setItem('armeria_target_soldado', soldadoSeleccionado.id);
+                                    window.dispatchEvent(new Event('salto_armeria'));
+                                }}>🔫 Equipar</button>
+
                                 <button className="btn-accion pequeno" style={{ backgroundColor: '#555' }} onClick={abrirModalEditar}>⚙️ Editar</button>
                             </div>
                             
@@ -394,6 +557,11 @@ export default function Barracones() {
                     )}
                 </div>
             </div>
+<button onClick={inyectarBatallon} style={{ backgroundColor: '#F44336', color: 'white', padding: '5px 10px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>
+    ⚠️ DEV: Inyectar 20 Soldados
+</button>
+
+<button onClick={calibrarPrestigioVeteranos}>Calibrar Veteranos</button>
 
             <ModalSoldado isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} soldadoData={soldadoParaEditar} onDelete={() => { setSoldadoSeleccionado(null); setIsModalOpen(false); }} />
         </div>

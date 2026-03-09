@@ -200,7 +200,7 @@ export default function Escuadrones() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', width: '100%' }}>
                     {renderCard('🛸 Nave', '#9C27B0', nave, opcionesNave, e => handleUpdateCampo('nave_id', e.target.value), false, '', 'Comercial')}
-                    {renderCard('⭐ Comandante', '#FF9800', lider, opcionesLider, e => handleUpdateCampo('lider_id', e.target.value), false, '', 'Relevar')}
+                    {renderCard('⭐ Capitán', '#FF9800', lider, opcionesLider, e => handleUpdateCampo('lider_id', e.target.value), false, '', 'Relevar')}
                     {renderCard('🤖 Droide', '#00BCD4', droide, opcionesDroide, e => handleUpdateCampo('droide_id', e.target.value), !rangoData.reqDr, 'Rango II', 'Aparcar')}
                     {renderCard('🚙 Vehículo', '#795548', vehiculo, opcionesVehiculo, e => handleUpdateCampo('vehiculo_id', e.target.value), !rangoData.reqVeh, 'Rango IV', 'Aparcar')}
                 </div>
@@ -324,6 +324,13 @@ export default function Escuadrones() {
                             <div className="tarjeta-soldado" style={{ backgroundColor: '#0b0f19', borderRadius: '8px', padding: '25px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)', borderTop: '5px solid #FF9800', position: 'relative' }}>
                                 <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px' }}>
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }} onClick={() => setEscuadronId(null)}>⬅ Volver</button>
+                                    
+                                    {/* BOTÓN DE ATAJO A LA ARMERIA */}
+                                    <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
+                                        localStorage.setItem('armeria_target_escuadron', escuadronActual.id);
+                                        window.dispatchEvent(new Event('salto_armeria'));
+                                    }}>🔫 Ir a Armería</button>
+
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => { setEscuadronAEditar(escuadronActual); setIsModalOpen(true); }}>⚙️ Ajustes</button>
                                 </div>
 

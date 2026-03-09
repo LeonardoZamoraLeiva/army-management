@@ -12,24 +12,21 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
     const { recargarTodo, escuadrones } = useData();
     const [tabActiva, setTabActiva] = useState('personal');
     
-    // LA SOLUCIÓN: Solo estamos editando si el soldado tiene un ID real asignado.
     const esEdicion = soldadoData && soldadoData.id;
 
-    // Estado inicial del formulario vacío
+    // Estado inicial limpio (Sin arma_principal ni clases_extra, con puntos_prestigio)
     const estadoInicial = {
-        nombre: '', nombre_clave: '', rango: '', clase: '', nivel: 1, xp: 0, clases_extra: '',
+        nombre: '', nombre_clave: '', rango: '', clase: '', nivel: 1, xp: 0, puntos_prestigio: 0,
         genero: 'Masculino', foto: '', lider: 'Libres', escuadron_id: null, alineamiento: '',
-        arma_principal: '', estado_actual: 'Activo', dias_herido: '',
+        estado_actual: 'Activo', dias_herido: '', dias_recuperacion: '', estado_salud: 'Sano',
         atributos: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
         rasgos: '', motivaciones: '', descripcion: '', otros: ''
     };
 
     const [formData, setFormData] = useState(estadoInicial);
 
-    // Cuando el modal se abre o cambian los datos, rellenamos el formulario
     useEffect(() => {
         if (soldadoData) {
-            // Rellena con los datos. Si es nuevo, solo pondrá la facción. El (soldadoData.atributos || {}) evita errores.
             setFormData({ ...estadoInicial, ...soldadoData, atributos: { ...estadoInicial.atributos, ...(soldadoData.atributos || {}) } });
         } else {
             setFormData(estadoInicial);
@@ -37,24 +34,23 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
         setTabActiva('personal'); 
     }, [soldadoData, isOpen]);
 
-    // Función genérica para actualizar los campos de texto
     const handleChange = (e) => {
         const { name, value } = e.target;
         if (['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(name)) {
             setFormData(prev => ({ ...prev, atributos: { ...prev.atributos, [name]: parseInt(value) || 10 } }));
+        } else if (name === 'puntos_prestigio') {
+            setFormData(prev => ({ ...prev, [name]: parseInt(value) || 0 }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
 
-    // Auto-cálculo Nivel -> XP
     const handleNivelChange = (e) => {
         let nivel = parseInt(e.target.value) || 1;
         nivel = Math.max(1, Math.min(20, nivel));
         setFormData(prev => ({ ...prev, nivel, xp: TABLA_XP_DND[nivel] || 0 }));
     };
 
-    // Auto-cálculo XP -> Nivel
     const handleXpChange = (e) => {
         const xp = parseInt(e.target.value) || 0;
         let nuevoNivel = 1;
@@ -64,15 +60,12 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
         setFormData(prev => ({ ...prev, xp, nivel: nuevoNivel }));
     };
 
-    // Guardar en Firebase
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             if (esEdicion) {
-                // Modo Editar (Solo entra aquí si tiene ID)
                 await updateDoc(doc(db, "soldados", soldadoData.id), formData);
             } else {
-                // Modo Reclutar (Entra aquí para los nuevos)
                 await addDoc(collection(db, "soldados"), formData);
             }
             await recargarTodo(); 
@@ -83,7 +76,6 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
         }
     };
 
-    // Eliminar de la base de datos
     const handleDelete = async () => {
         if (!window.confirm(`¿Estás seguro de licenciar y dar de baja a ${soldadoData.nombre}? Esta acción es irreversible.`)) return;
         
@@ -130,9 +122,10 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                                     <div className="grupo-input"><label>Género:</label><select name="genero" value={formData.genero} onChange={handleChange}><option>Femenino</option><option>Masculino</option><option>Otro</option></select></div>
                                 </div>
                                 <div>
-                                    <div className="grupo-input"><label>Facción Titular:</label><input type="text" name="lider" value={formData.lider} onChange={handleChange} placeholder="Ej: William, Cazador..." required /></div>
+                                    <div className="grupo-input"><label>Comandante a cargo:</label><input type="text" name="lider" value={formData.lider} onChange={handleChange} placeholder="Ej: William, Cazador..." required /></div>
                                     <div className="grupo-input"><label>URL Fotografía:</label><input type="url" name="foto" value={formData.foto} onChange={handleChange} placeholder="https://..." /></div>
                                     
+                                    {/* PANEL MÉDICO RESTAURADO Y PROTEGIDO */}
                                     <div className="grupo-input" style={{ background: '#323245', padding: '10px', borderRadius: '4px', borderLeft: '3px solid #F44336', marginTop: '10px' }}>
                                         <label style={{ color: '#F44336', margin: '0 0 5px 0', display: 'block' }}>Panel Médico (Control GM)</label>
                                         <div style={{ display: 'flex', gap: '10px' }}>
@@ -163,12 +156,14 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData, onDelete })
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                 <div>
                                     <div className="grupo-input"><label>Clase Base (RPG):</label><input type="text" name="clase" value={formData.clase} onChange={handleChange} required /></div>
+                                    
+                                    {/* PRESTIGIO AÑADIDO Y CLASES EXTRA ELIMINADO */}
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                         <div className="grupo-input" style={{ flex: 1 }}><label>Nivel:</label><input type="number" name="nivel" value={formData.nivel} onChange={handleNivelChange} min="1" max="20" required /></div>
-                                        <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#00BCD4' }}>XP Actual:</label><input type="number" name="xp" value={formData.xp} onChange={handleXpChange} min="0" /></div>
+                                        <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#00BCD4' }}>Prestigio (Pts):</label><input type="number" name="puntos_prestigio" value={formData.puntos_prestigio} onChange={handleChange} /></div>
                                     </div>
-                                    <div className="grupo-input"><label>Desglose Clases:</label><input type="text" name="clases_extra" value={formData.clases_extra} onChange={handleChange} /></div>
-                                    <div className="grupo-input"><label>Arma de Preferencia:</label><input type="text" name="arma_principal" value={formData.arma_principal} onChange={handleChange} /></div>
+                                    
+                                    <div className="grupo-input"><label style={{ color: '#00BCD4' }}>XP Actual:</label><input type="number" name="xp" value={formData.xp} onChange={handleXpChange} min="0" /></div>
                                 </div>
                                 <div style={{ backgroundColor: '#111118', padding: '15px', borderRadius: '8px', border: '1px solid #3f3f5a' }}>
                                     <label style={{ color: esEdicion ? '#FF9800' : '#4CAF50', fontSize: '1rem', display: 'block', marginBottom: '15px', textTransform: 'uppercase', textAlign: 'center', letterSpacing: '1px' }}>Escáner de Atributos</label>
