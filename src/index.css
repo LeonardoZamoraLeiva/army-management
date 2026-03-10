@@ -532,6 +532,29 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 }
 
 /* =========================================================
+   EFECTOS TÁCTICOS ESCUADRONES (Añadido Reciente)
+   ========================================================= */
+
+/* Efecto hover luminoso para la lista lateral de escuadrones */
+.item-escuadron-sidebar {
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.item-escuadron-sidebar:hover {
+    background-color: #2a334c !important;
+    box-shadow: inset 0 0 15px rgba(255, 152, 0, 0.15), 0 4px 8px rgba(0,0,0,0.5);
+    transform: translateX(4px);
+    border-color: rgba(255, 152, 0, 0.5) !important;
+}
+
+/* Ajuste del botón expansible para que el texto "Formar" entre bien */
+.btn-reclutar-mini:hover .texto {
+    opacity: 1;
+    max-width: 120px; /* Aumentado para que quepan palabras más largas */
+    margin-left: 6px;
+}
+
+/* =========================================================
    7. RESPONSIVIDAD (MÓVILES)
    ========================================================= */
 @media (max-width: 768px) {

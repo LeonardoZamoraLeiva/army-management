@@ -24,7 +24,6 @@ export const getRangoEscuadron = (xp = 0) => {
     return { rango: 5, romano: 'V', titulo: 'Leyendas del Sector', maxOp: 4, reqNave: true, reqDr: true, reqVeh: true, next: 'MAX' };
 };
 
-// MOTOR CENTRALIZADO DE T.R. (Se exporta para que Modal y Misiones usen exactamente la misma matemática)
 export const calcularTREscuadron = (escuadron, soldados, vehiculos, equipo) => {
     let totalTR = 0;
     const listaMiembros = Array.isArray(escuadron.miembros) ? escuadron.miembros : [];
@@ -68,10 +67,16 @@ export default function Escuadrones() {
     const [escuadronId, setEscuadronId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [escuadronAEditar, setEscuadronAEditar] = useState(null);
+    
+    // --- NUEVO ESTADO PARA ACORDEONES ---
+    const [faccionesAbiertas, setFaccionesAbiertas] = useState({});
 
     const escuadronActual = escuadrones.find(e => e.id === escuadronId);
 
-    // CÁLCULOS GLOBALES PARA EL DASHBOARD
+    const toggleFaccion = (faccion) => {
+        setFaccionesAbiertas(prev => ({ ...prev, [faccion]: !prev[faccion] }));
+    };
+
     let mTotalesGlobales = 0, mExitoGlobales = 0, moralGlobalSum = 0;
     escuadrones.forEach(esc => { 
         mTotalesGlobales += Number(esc.mtotales || 0); 
@@ -88,7 +93,6 @@ export default function Escuadrones() {
         return acc;
     }, {});
 
-    // COMPILACIÓN DE DATOS DEL RENDIMIENTO POR LÍDER
     const factionStats = {};
     Object.entries(agrupadoPorFaccion).forEach(([faccion, lista]) => {
         let mTot = 0, mEx = 0;
@@ -223,45 +227,80 @@ export default function Escuadrones() {
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div className="panel-acciones" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '5px solid #FF9800', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#FF9800', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Gestión de Batallones</h2>
-                <button className="btn-reclutar-mini" onClick={() => { setEscuadronAEditar(null); setIsModalOpen(true); }}>
-                    <span className="icono">+</span> <span className="texto">FORMAR</span>
-                </button>
             </div>
             
             <div style={{ display: 'flex', gap: '20px' }}>
                 <div style={{ flex: '0 0 28%', backgroundColor: '#0b0f19', borderRadius: '8px', padding: '15px', height: '650px', overflowY: 'auto', border: '1px solid #1a2235' }}>
                     <p style={{ textAlign: 'center', color: '#8892b0', margin: '0 0 15px 0', fontSize: '0.9rem', fontStyle: 'italic' }}>Selecciona un batallón para analizar su estructura.</p>
+                    
                     {Object.entries(agrupadoPorFaccion).map(([faccion, listaEscuadrones]) => (
                         <div key={faccion} className="grupo-lider" style={{ marginBottom: '15px' }}>
-                            <div className="cabecera-lider" style={{ borderBottom: '2px solid #4CAF50', backgroundColor: '#1a2235', padding: '12px 15px', borderRadius: '6px 6px 0 0' }}>
+                            <div 
+                                className="cabecera-lider" 
+                                style={{ borderBottom: '2px solid #4CAF50', backgroundColor: '#1a2235', padding: '12px 15px', borderRadius: faccionesAbiertas[faccion] ? '6px 6px 0 0' : '6px', cursor: 'pointer', transition: '0.2s' }}
+                                onClick={() => toggleFaccion(faccion)}
+                            >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                                    <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', textTransform: 'uppercase' }}>🏳️ {faccion}</h3>
-                                    <span className="contador-tropas" style={{ backgroundColor: '#4CAF50', color: '#fff' }}>{listaEscuadrones.length} Escuadras</span>
+                                    <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', textTransform: 'uppercase' }}>
+                                        <span style={{ fontSize: '0.9rem', marginRight: '8px', color: '#888' }}>{faccionesAbiertas[faccion] ? '▼' : '▶'}</span>
+                                        🏳️ {faccion}
+                                    </h3>
+                                    
+                                    <button 
+                                        className="btn-reclutar-mini" 
+                                        style={{ backgroundColor: '#FF9800', color: '#111' }}
+                                        onClick={(e) => { 
+                                            e.stopPropagation();
+                                            setEscuadronAEditar({ faccion: faccion === 'Sin Afiliación' ? '' : faccion }); 
+                                            setIsModalOpen(true); 
+                                        }}
+                                        title={`Formar escuadrón para ${faccion}`}
+                                    >
+                                        <span className="icono" style={{ color: '#111' }}>+</span>
+                                        <span className="texto" style={{ color: '#111' }}>Formar</span>
+                                    </button>
                                 </div>
                             </div>
-                            <div style={{ padding: '10px', backgroundColor: '#0b0f19', border: '1px solid #1a2235', borderTop: 'none', borderRadius: '0 0 6px 6px' }}>
-                                {listaEscuadrones.map(escuadron => {
-                                    const esSeleccionado = escuadronActual?.id === escuadron.id;
-                                    const rankInfo = getRangoEscuadron(escuadron.xp_escuadron);
-                                    return (
-                                        <div key={escuadron.id} onClick={() => setEscuadronId(escuadron.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', marginBottom: '8px', backgroundColor: esSeleccionado ? '#1c150c' : '#1a2235', borderLeft: `3px solid #FF9800`, borderRadius: '4px', cursor: 'pointer', border: esSeleccionado ? `1px solid #FF9800` : '1px solid transparent' }}>
-                                            <div>
-                                                <h4 style={{ margin: '0 0 3px 0', color: '#FF9800' }}>{escuadron.nombre}</h4>
-                                                <span style={{ fontSize: '0.7rem', color: '#8892b0' }}>Rango {rankInfo.romano}</span>
+                            
+                            {faccionesAbiertas[faccion] && (
+                                <div style={{ padding: '10px', backgroundColor: '#0b0f19', border: '1px solid #1a2235', borderTop: 'none', borderRadius: '0 0 6px 6px', animation: 'fadeIn 0.2s ease-in-out' }}>
+                                    {listaEscuadrones.map(escuadron => {
+                                        const esSeleccionado = escuadronActual?.id === escuadron.id;
+                                        const rankInfo = getRangoEscuadron(escuadron.xp_escuadron);
+                                        return (
+                                            <div 
+                                                key={escuadron.id} 
+                                                onClick={() => setEscuadronId(escuadron.id)} 
+                                                className="item-escuadron-sidebar"
+                                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', marginBottom: '8px', backgroundColor: esSeleccionado ? '#1c150c' : '#1a2235', borderLeft: `3px solid #FF9800`, borderRadius: '4px', cursor: 'pointer', border: esSeleccionado ? `1px solid #FF9800` : '1px solid transparent' }}
+                                            >
+                                                <div>
+                                                    <h4 style={{ margin: '0 0 3px 0', color: '#FF9800' }}>{escuadron.nombre}</h4>
+                                                    <span style={{ fontSize: '0.7rem', color: '#8892b0' }}>Rango {rankInfo.romano}</span>
+                                                </div>
+                                                <span style={{ fontSize: '0.9rem', color: '#4CAF50', fontWeight: 'bold', fontFamily: 'monospace' }}>TR {calcularTREscuadron(escuadron, soldados, vehiculos, equipo)}</span>
                                             </div>
-                                            <span style={{ fontSize: '0.9rem', color: '#4CAF50', fontWeight: 'bold', fontFamily: 'monospace' }}>TR {calcularTREscuadron(escuadron, soldados, vehiculos, equipo)}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     ))}
+
+                    <button 
+                        style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', border: '1px dashed #3f3f5a', color: '#8892b0', borderRadius: '6px', cursor: 'pointer', transition: '0.2s' }}
+                        onClick={() => { setEscuadronAEditar(null); setIsModalOpen(true); }}
+                        onMouseOver={e => e.target.style.backgroundColor = '#1a2235'}
+                        onMouseOut={e => e.target.style.backgroundColor = 'transparent'}
+                    >
+                        + Nueva Facción / Independiente
+                    </button>
                 </div>
 
                 <div style={{ flex: 1 }}>
                     {!escuadronActual ? (
                         <div style={{ width: '100%' }}>
-                            <h3 style={{ color: '#FF9800', borderBottom: '2px solid #3f3f5a', paddingBottom: '10px', marginTop: 0 }}>🏆 Rendimiento por Líder</h3>
+                            <h3 style={{ color: '#FF9800', borderBottom: '2px solid #3f3f5a', paddingBottom: '10px', marginTop: 0 }}>🏆 Rendimiento por Comandante</h3>
                             
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginTop: '15px', marginBottom: '20px' }}>
                                 {Object.entries(factionStats).map(([faccion, stats]) => (
@@ -325,12 +364,11 @@ export default function Escuadrones() {
                                 <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px' }}>
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }} onClick={() => setEscuadronId(null)}>⬅ Volver</button>
                                     
-                                    {/* BOTÓN DE ATAJO A LA ARMERIA */}
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
                                         localStorage.setItem('armeria_target_escuadron', escuadronActual.id);
                                         window.dispatchEvent(new Event('salto_armeria'));
-                                    }}>🔫 Ir a Armería</button>
-
+                                    }}>🔫 Equipar</button>
+                                    
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => { setEscuadronAEditar(escuadronActual); setIsModalOpen(true); }}>⚙️ Ajustes</button>
                                 </div>
 

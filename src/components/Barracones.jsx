@@ -251,9 +251,13 @@ const calibrarPrestigioVeteranos = async () => {
         xpParaSiguiente = nivelActual < 20 ? TABLA_XP_DND[nivelActual + 1] : "Max";
         porcentajeXP = nivelActual < 20 ? Math.min(100, Math.max(0, ((xpActual - TABLA_XP_DND[nivelActual]) / (xpParaSiguiente - TABLA_XP_DND[nivelActual])) * 100)) : 100;
 
-        if (soldadoSeleccionado.escuadron_id) {
-            const esc = escuadrones.find(e => e.id === soldadoSeleccionado.escuadron_id);
-            if (esc) nombreEscuadron = esc.nombre;
+// --- LÓGICA BUG-PROOF PARA ASIGNACIÓN ---
+        const escAlQuePertenece = escuadrones.find(e => e.lider_id === soldadoSeleccionado.id || (e.miembros && e.miembros.includes(soldadoSeleccionado.id)));
+        
+        if (escAlQuePertenece) {
+            nombreEscuadron = escAlQuePertenece.nombre;
+        } else {
+            nombreEscuadron = "Reserva (Sin Asignar)";
         }
 
         mTotales = soldadoSeleccionado.operaciones || 0;

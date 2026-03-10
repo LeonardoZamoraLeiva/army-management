@@ -7,7 +7,7 @@ import ModalDesplegar from './ModalDesplegar';
 import ModalAAR from './ModalAAR';
 import { getMoralData, calcularTREscuadron } from './Escuadrones'; 
 
-const MS_POR_DIA = 60000; 
+const MS_POR_DIA = 60000; // 1 min real = 1 día de juego
 
 const RISK_TABLE = {
     'E': { inj: 5, dea: 0 }, 'D': { inj: 10, dea: 1 }, 'C': { inj: 20, dea: 3 }, 'B': { inj: 35, dea: 8 },
@@ -26,6 +26,12 @@ const formatoTiempo = (ms) => {
     const sec = Math.floor((ms / 1000) % 60);
     return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 };
+
+const PLANTILLAS = [
+    { titulo: "Purga de Nido", lugar: "Mandalore", descripcion: "Un informante tiene códigos críticos.", rango: "B", cr_req: 8, tiempo_viaje: 3, tiempo_ejecucion: 2, recompensa: "1500 CR", xp: 0 },
+    { titulo: "Infiltración", lugar: "Tatooine", descripcion: "Se detectó una anomalía biológica en el sector.", rango: "D", cr_req: 3, tiempo_viaje: 2, tiempo_ejecucion: 1, recompensa: "500 CR", xp: 0 },
+    { titulo: "Recuperación de datos", lugar: "Ryloth", descripcion: "Fuerzas hostiles han fortificado la zona.", rango: "C", cr_req: 5, tiempo_viaje: 4, tiempo_ejecucion: 3, recompensa: "800 CR", xp: 0 }
+];
 
 export default function Misiones() {
     const { escuadrones, soldados, vehiculos, equipo, recargarTodo } = useData();
@@ -51,6 +57,15 @@ export default function Misiones() {
         return () => clearInterval(timer);
     }, []);
 
+    const generarMisionAleatoria = async () => {
+        const template = PLANTILLAS[Math.floor(Math.random() * PLANTILLAS.length)];
+        const horasAleatorias = Math.floor(Math.random() * 60) + 12; 
+        await addDoc(collection(db, "misiones"), {
+            ...template, estado: 'Pendiente', escuadrones_id: [], fecha: new Date().toLocaleDateString(),
+            expira_en: Date.now() + (horasAleatorias * 3600 * 1000)
+        });
+    };
+
     const eliminarMision = async (mision) => {
         if (window.confirm("¿Estás seguro de que deseas revocar y borrar este contrato?")) {
             const asignados = mision.escuadrones_id || [];
@@ -62,7 +77,6 @@ export default function Misiones() {
         }
     };
 
-    // --- NUEVA FUNCIÓN: DESPLIEGUE DEFINITIVO ---
     const iniciarDespliegueDefinitivo = async (mision, escuadronesDesplegados) => {
         if (!window.confirm(`¿Autorizas el despliegue a "${mision.titulo}"? Las tropas quedarán bloqueadas hasta su regreso.`)) return;
 
@@ -116,11 +130,19 @@ export default function Misiones() {
         if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
         const exito = (Math.random() * 100) <= probExitoReal; 
-        const resultadoTexto = exito ? `Contrato cumplido con éxito. Recompensa asegurada.` : `Objetivo fallido. Las fuerzas se retiraron con fuertes penalizaciones.`;
+        const resultadoTexto = exito 
+            ? `Contrato cumplido con éxito. Recompensa asegurada.` 
+            : `Objetivo fallido. Las fuerzas se retiraron con fuertes penalizaciones.`;
         
         const valoresRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 };
         const valorRango = valoresRango[mision.rango] || 3; 
-        let puntosPrestigioDelta = exito ? (2 + Math.round((100 - probExitoReal) / 10) + valorRango) : (-1 - Math.round(probExitoReal / 10) - (8 - valorRango));
+        let puntosPrestigioDelta = 0;
+
+        if (exito) {
+            puntosPrestigioDelta = 2 + Math.round((100 - probExitoReal) / 10) + valorRango;
+        } else {
+            puntosPrestigioDelta = -1 - Math.round(probExitoReal / 10) - (8 - valorRango);
+        }
 
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
@@ -142,6 +164,7 @@ export default function Misiones() {
             const esc = escuadrones.find(e => e.id === escId);
             if (!esc) continue;
             nombresEscuadrones.push(esc.nombre);
+
             const miembros = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
             const idsUnicos = [...new Set(miembros)];
             let bajasEscuadron = [];
@@ -154,60 +177,75 @@ export default function Misiones() {
                 let burlos = Number(soldado.veces_salvado || 0);
                 let newXp = Number(soldado.xp || 0) + xpBaseGained;
                 let newLevel = Number(soldado.nivel || 1);
+                let leveledUp = false;
                 let txtLogParts = [];
 
+                let numOperaciones = Number(soldado.operaciones || 0) + 1;
+                let numExitos = Number(soldado.exitos || 0) + (exito ? 1 : 0);
+                
                 const rangoLetra = mision.rango || 'C';
                 let medallas = soldado.medallas ? { ...soldado.medallas } : { 'E': 0, 'D': 0, 'C': 0, 'B': 0, 'A': 0, 'S': 0, 'SS': 0 };
-                if (exito) medallas[rangoLetra] = (Number(medallas[rangoLetra]) || 0) + 1;
+                if (exito) { medallas[rangoLetra] = (Number(medallas[rangoLetra]) || 0) + 1; }
 
-                while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) newLevel++;
+                while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) { newLevel++; leveledUp = true; }
+
+                if (leveledUp) txtLogParts.push(`⭐ ¡${soldado.nombre} ascendió al Nivel ${newLevel}!`);
 
                 if (estadoSalud !== 'Muerto') {
                     if ((Math.random() * 100) < riskStats.dea) {
-                        if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
-                        else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } } 
-                        else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); }
+                        if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} sufrió heridas letales pero sobrevivió (Burló Muerte x1).`); } 
+                        else if (burlos === 1) {
+                            if (Math.random() < 0.80) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} fue salvado in-extremis (Burló Muerte x2).`); } 
+                            else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha caído en combate (K.I.A).`); }
+                        } else if (burlos === 2) {
+                            if (Math.random() < 0.50) { burlos = 3; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló a la muerte por un milagro (Burló Muerte x3).`); } 
+                            else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha caído en combate (K.I.A).`); }
+                        } else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha muerto definitivamente.`); }
                     } else if (estadoSalud !== 'Gravísima' && (Math.random() * 100) < riskStats.inj) {
                         const rollSev = Math.random() * 100;
-                        if (rollSev < 50) { estadoSalud = 'Leve'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas leves.`); }
-                        else if (rollSev < 85) { estadoSalud = 'Media'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas moderadas.`); }
-                        else { estadoSalud = 'Grave'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas graves.`); }
+                        if (rollSev < 50) { estadoSalud = 'Leve'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas leves.`); }
+                        else if (rollSev < 85) { estadoSalud = 'Media'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas moderadas.`); }
+                        else { estadoSalud = 'Grave'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas graves.`); }
                     }
                 }
 
                 if (txtLogParts.length > 0) {
-                    const msg = txtLogParts.join(' ');
-                    bajasEscuadron.push(msg);
-                    reporteBajasGlobal.push(msg);
+                    const mensajeFinal = txtLogParts.join(' ');
+                    bajasEscuadron.push(mensajeFinal);
+                    reporteBajasGlobal.push(mensajeFinal);
                 }
                 
+                let puntosActuales = Number(soldado.puntos_prestigio || 0);
+                let nuevosPuntos = puntosActuales + puntosPrestigioDelta;
+
                 await updateDoc(doc(db, "soldados", sId), { 
                     estado_salud: estadoSalud, veces_salvado: burlos, xp: newXp, nivel: newLevel,
-                    operaciones: (Number(soldado.operaciones || 0) + 1), exitos: (Number(soldado.exitos || 0) + (exito ? 1 : 0)), medallas,
-                    puntos_prestigio: Number(soldado.puntos_prestigio || 0) + puntosPrestigioDelta
+                    operaciones: numOperaciones, exitos: numExitos, medallas: medallas, puntos_prestigio: nuevosPuntos
                 });
             }
 
             let moralActual = Number(esc.moral);
             if (isNaN(moralActual)) moralActual = 50;
+            let nuevaMoral = exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15);
+            let nuevaXpEscuadron = (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada;
+
+            const nuevoRegistro = { 
+                fecha: new Date().toLocaleDateString(), titulo: mision.titulo, 
+                descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron 
+            };
             
             await updateDoc(doc(db, "escuadrones", esc.id), {
-                estado: 'En Base', bitacora: arrayUnion({ fecha: new Date().toLocaleDateString(), titulo: mision.titulo, descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron }),
+                estado: 'En Base', bitacora: arrayUnion(nuevoRegistro),
                 mtotales: (Number(esc.mtotales) || 0) + 1, mexito: (Number(esc.mexito) || 0) + (exito ? 1 : 0),
-                moral: exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15), xp_escuadron: (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada
+                moral: nuevaMoral, xp_escuadron: nuevaXpEscuadron
             });
         }
 
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
         
         setReporteAAR({
-            titulo: mision.titulo, 
-            escuadronNombre: nombresEscuadrones.join(" + "),
-            exito, 
-            descripcion: resultadoTexto, 
-            xp: `+${xpBaseGained} XP`, 
-            recompensas: recompensaObtenida,
-            // AQUÍ OCULTAMOS EL NÚMERO EXACTO
+            titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "),
+            exito, descripcion: resultadoTexto, xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida,
             xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), 
             bajas: reporteBajasGlobal
         });
@@ -218,7 +256,10 @@ export default function Misiones() {
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div className="panel-acciones" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '5px solid #F44336', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#F44336', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Tablero de Contratos</h2>
-                <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
+                    <button className="btn-accion" style={{ backgroundColor: '#9C27B0', color: '#fff' }} onClick={generarMisionAleatoria}>✨ Auto-Generar</button>
+                </div>
             </div>
 
             {misiones.length === 0 ? (
@@ -229,7 +270,6 @@ export default function Misiones() {
                         const arrAsignados = m.escuadrones_id || [];
                         const escuadronesAsignados = arrAsignados.map(id => escuadrones.find(e => e.id === id)).filter(Boolean);
                         
-                        // FASES CLAVES
                         const esNueva = arrAsignados.length === 0;
                         const estaPreparando = arrAsignados.length > 0 && !m.fecha_despliegue;
                         const estaDesplegada = !!m.fecha_despliegue;
@@ -281,15 +321,37 @@ export default function Misiones() {
                         }
 
                         let crFuerzaTotal = 0, probExito = 0;
+                        let moralPromedio = 0;
+                        let reduccionViajeMaxPct = 0;
+
                         if (!esNueva) {
-                            let moralPromedio = 0;
                             escuadronesAsignados.forEach(esc => {
                                 crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo);
                                 moralPromedio += getMoralData(esc.moral).mod;
+                                
+                                if (esc.nave_id) {
+                                    const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
+                                    if (nave) {
+                                        const r = Number(nave.req_rango || 1);
+                                        const pct = r === 1 ? 0.10 : r === 2 ? 0.15 : r === 3 ? 0.25 : r === 4 ? 0.35 : r === 5 ? 0.50 : 0;
+                                        if (pct > reduccionViajeMaxPct) reduccionViajeMaxPct = pct;
+                                    }
+                                }
                             });
                             moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
-                            probExito = Math.min(95, Math.max(5, Math.round((crFuerzaTotal / (m.cr_req || 1)) * 75) + moralPromedio));
+                            crFuerzaTotal = Math.round(crFuerzaTotal * 100) / 100;
+                            let baseProb = (crFuerzaTotal / (m.cr_req || 1)) * 75;
+                            probExito = Math.min(95, Math.max(5, Math.round(baseProb) + moralPromedio));
                         }
+
+                        const stats = RISK_TABLE[m.rango] || RISK_TABLE['C'];
+                        const xpMision = m.xp ? Number(m.xp) : (m.cr_req || 1) * 150;
+                        const tiempoViajeBase = Number(m.tiempo_viaje || 0);
+                        const tiempoEjecucion = Number(m.tiempo_ejecucion || 3);
+                        const reduccionDias = tiempoViajeBase * reduccionViajeMaxPct;
+                        const tiempoViajeReal = Math.max(0, tiempoViajeBase - reduccionDias);
+                        const duracionFinal = Math.round((tiempoViajeReal + tiempoEjecucion) * 10) / 10;
+                        const redStr = Math.round(reduccionDias * 10) / 10;
 
                         return (
                             <div key={m.id} className="tarjeta-escuadron" style={{ position: 'relative', backgroundColor: '#111118', borderTop: `5px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : (faseEstado === 'lista' ? '#9C27B0' : '#00BCD4'))}`, borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }}>
@@ -319,6 +381,18 @@ export default function Misiones() {
                                 
                                 <p style={{ color: '#aaa', fontSize: '0.85rem', fontStyle: 'italic', margin: '10px 0' }}>{m.descripcion}</p>
                                 
+                                {/* BLOQUE RESTAURADO: DURACIÓN, XP Y RECOMPENSA */}
+                                <div style={{ borderTop: '1px dashed #3f3f5a', paddingTop: '10px', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>
+                                            ⏳ Duración: <b>{duracionFinal} d</b> {redStr > 0 && <span style={{color: '#8BC34A'}}>(-{redStr}d Viaje)</span>}
+                                        </span>
+                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>⭐ XP Est: <b>+{xpMision}</b></span>
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: '#FFC107' }}>💰 <b>{m.recompensa || 'Por definir'}</b></div>
+                                </div>
+
+                                {/* BARRA DE PROGRESO DE MISIÓN EN CURSO */}
                                 {estaDesplegada && (
                                     <div style={{ backgroundColor: '#000', padding: '10px', borderRadius: '6px', marginBottom: '15px', border: '1px solid #333' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem' }}>
@@ -333,24 +407,28 @@ export default function Misiones() {
                                     </div>
                                 )}
 
-                                {estaPreparando && (
-                                    <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: '1px solid #FF9800', marginTop: 'auto', marginBottom: '15px' }}>
-                                        <h4 style={{ margin: '0 0 10px 0', color: '#FF9800', textTransform: 'uppercase', fontSize: '0.85rem' }}>Alistamiento de Tropas</h4>
-                                        <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                            {escuadronesAsignados.map(e => <span key={e.id} style={{ backgroundColor: '#323245', padding: '4px 8px', borderRadius: '4px', color: '#FF9800', fontSize: '0.75rem', fontWeight: 'bold' }}>🛡️ [{e.nombre}]</span>)}
-                                        </div>
-                                        <div style={{ fontSize: '0.9rem', color: '#e0e0e0' }}>
-                                            <p style={{ margin: '0 0 5px 0' }}>🎯 TR Fuerza: <b style={{color: '#00BCD4'}}>{crFuerzaTotal.toFixed(1)}</b> vs CR Objetivo: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
-                                            <p style={{ margin: '0 0 5px 0' }}>🎲 Prob. Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{probExito}%</b></p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {estaDesplegada && (
-                                    <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: '1px solid #3f3f5a', marginTop: 'auto' }}>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                            {escuadronesAsignados.map(e => <span key={e.id} style={{ backgroundColor: '#323245', padding: '4px 8px', borderRadius: '4px', color: '#00BCD4', fontSize: '0.75rem', fontWeight: 'bold' }}>🛡️ [{e.nombre}]</span>)}
-                                        </div>
+                                {/* BLOQUE CENTRAL: ALISTAMIENTO O SIN ASIGNAR */}
+                                {!estaDesplegada && (
+                                    <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: `1px solid ${estaPreparando ? '#FF9800' : '#3f3f5a'}`, marginTop: 'auto' }}>
+                                        {estaPreparando ? (
+                                            <>
+                                                <h4 style={{ margin: '0 0 10px 0', color: '#FF9800', textTransform: 'uppercase', fontSize: '0.85rem' }}>Alistamiento de Tropas</h4>
+                                                <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                                    {escuadronesAsignados.map(e => <span key={e.id} style={{ backgroundColor: '#323245', padding: '4px 8px', borderRadius: '4px', color: '#FF9800', fontSize: '0.75rem', fontWeight: 'bold' }}>🛡️ [{e.nombre}]</span>)}
+                                                </div>
+                                                <div style={{ fontSize: '0.9rem', color: '#e0e0e0' }}>
+                                                    <p style={{ margin: '0 0 5px 0' }}>🎯 TR Fuerza: <b style={{color: '#00BCD4'}}>{crFuerzaTotal.toFixed(1)}</b> vs CR Objetivo: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
+                                                    <p style={{ margin: '0 0 5px 0' }}>🎲 Prob. Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{probExito}%</b></p>
+                                                    <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {stats.inj}% Heridas | {stats.dea}% K.I.A.</p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div style={{ textAlign: 'center' }}>
+                                                <p style={{ margin: '0 0 5px 0', color: '#888', fontSize: '0.85rem' }}>Fuerzas sin asignar.</p>
+                                                <p style={{ margin: '0 0 5px 0', color: '#e0e0e0', fontSize: '0.9rem' }}>🎯 Objetivo CR: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
+                                                <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {stats.inj}% Heridas | {stats.dea}% K.I.A.</p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 

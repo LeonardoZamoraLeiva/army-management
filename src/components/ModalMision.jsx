@@ -8,7 +8,8 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
     const esEdicion = misionData && misionData.id;
 
     const estadoInicial = {
-        titulo: '', lugar: '', descripcion: '', rango: 'C',
+        titulo: '', lugar: '', descripcion: '', rango: 'C', peligrosidad: '',
+        req_especiales: '', recompensas_especiales: '', // NUEVOS CAMPOS
         cr_req: 1, tiempo_viaje: 2, tiempo_ejecucion: 3, recompensa: '', xp: 0,
         horas_limite: 48 
     };
@@ -29,7 +30,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
         e.preventDefault();
         try {
             if (esEdicion) {
-                // Solo actualizamos los datos, no tocamos la fecha de creación ni expiración a menos que quieras resetearla
+                // Actualizamos la misión existente
                 await updateDoc(doc(db, "misiones", misionData.id), {
                     ...formData,
                     cr_req: Number(formData.cr_req),
@@ -38,6 +39,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                     xp: Number(formData.xp) || 0
                 });
             } else {
+                // Creamos una nueva
                 const milisegundosLimite = Number(formData.horas_limite) * 60 * 60 * 1000;
                 const expiraEn = Date.now() + milisegundosLimite;
 
@@ -62,7 +64,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal datapad-container" style={{ maxWidth: '500px', borderColor: esEdicion ? '#FF9800' : '#F44336' }}>
+            <div className="contenido-modal datapad-container" style={{ maxWidth: '550px', borderColor: esEdicion ? '#FF9800' : '#F44336' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
                 <h2 style={{ color: esEdicion ? '#FF9800' : '#F44336', marginTop: 0 }}>
                     {esEdicion ? 'Modificar Contrato' : 'Redactar Nuevo Contrato'}
@@ -79,15 +81,22 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                                 <option>E</option><option>D</option><option>C</option><option>B</option><option>A</option><option>S</option><option>SS</option>
                             </select>
                         </div>
-
+                        <div className="grupo-input" style={{ flex: 1 }}><label>Peligrosidad:</label><input type="text" name="peligrosidad" value={formData.peligrosidad || ''} onChange={handleChange} placeholder="Ej: Alta" /></div>
+                        
                         {!esEdicion && (
                             <div className="grupo-input" style={{ flex: 1 }}><label>Validez (Hrs):</label><input type="number" name="horas_limite" value={formData.horas_limite} onChange={handleChange} required min="1" /></div>
                         )}
                     </div>
 
+                    {/* NUEVOS CAMPOS ESPECIALES */}
+                    <div style={{ borderLeft: '3px solid #9C27B0', paddingLeft: '10px', marginBottom: '15px' }}>
+                        <div className="grupo-input"><label style={{color: '#9C27B0'}}>Requisitos Especiales:</label><input type="text" name="req_especiales" value={formData.req_especiales} onChange={handleChange} placeholder="Ej: Solo usuarios de Nen, Inmunidad al veneno..." /></div>
+                        <div className="grupo-input" style={{margin: 0}}><label style={{color: '#FFC107'}}>Recompensas Especiales:</label><input type="text" name="recompensas_especiales" value={formData.recompensas_especiales} onChange={handleChange} placeholder="Ej: Artefacto clase A, Información vital..." /></div>
+                    </div>
+
                     <div style={{ display: 'flex', gap: '10px', backgroundColor: '#111118', padding: '10px', borderRadius: '4px', border: '1px solid #3f3f5a', marginBottom: '15px' }}>
-                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Viaje Ida (Días):</label><input type="number" name="tiempo_viaje" value={formData.tiempo_viaje} onChange={handleChange} required min="0" /></div>
-                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Ejecución (Días):</label><input type="number" name="tiempo_ejecucion" value={formData.tiempo_ejecucion} onChange={handleChange} required min="1" /></div>
+                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Tiempo Viaje (Días):</label><input type="number" name="tiempo_viaje" value={formData.tiempo_viaje} onChange={handleChange} required min="0" /></div>
+                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Tiempo Ejecución (Días):</label><input type="number" name="tiempo_ejecucion" value={formData.tiempo_ejecucion} onChange={handleChange} required min="1" /></div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
@@ -95,7 +104,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                         <div className="grupo-input" style={{ flex: 1 }}><label>Experiencia (0 = Auto):</label><input type="number" name="xp" value={formData.xp} onChange={handleChange} min="0" /></div>
                     </div>
 
-                    <div className="grupo-input"><label>Recompensa Base:</label><input name="recompensa" value={formData.recompensa} onChange={handleChange} required placeholder="Ej: 1500 CR" /></div>
+                    <div className="grupo-input"><label>Recompensa CR Base:</label><input name="recompensa" value={formData.recompensa} onChange={handleChange} required placeholder="Ej: 1500 CR" /></div>
                     
                     <div className="botones-modal">
                         <button type="submit" className={`btn-accion ${esEdicion ? 'naranja' : 'rojo'}`}>

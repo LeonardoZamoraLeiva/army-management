@@ -71,13 +71,15 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
 
     if (!isOpen) return null;
 
-    // --- FILTRO DE OCUPADOS ---
+    // --- FILTROS INTELIGENTES ---
     const assignedSoldiers = new Set();
     const assignedVehicles = new Set();
     const assignedDroids = new Set();
+    const faccionesSet = new Set();
 
     escuadrones.forEach(esc => {
-        if (escuadronData && esc.id === escuadronData.id) return; // Ignora los del escuadrón actual que estás editando
+        if (esc.faccion && esc.faccion !== 'Sin Afiliación') faccionesSet.add(esc.faccion);
+        if (escuadronData && esc.id === escuadronData.id) return; 
         if (esc.lider_id) assignedSoldiers.add(String(esc.lider_id));
         (esc.miembros || []).forEach(m => { if (m) assignedSoldiers.add(String(m)); });
         if (esc.nave_id) assignedVehicles.add(String(esc.nave_id));
@@ -85,9 +87,15 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
         if (esc.droide_id) assignedDroids.add(String(esc.droide_id));
     });
 
+    soldados.forEach(s => {
+        if (s.lider && s.lider !== 'Libres') faccionesSet.add(s.lider);
+    });
+
+    const faccionesUnicas = Array.from(faccionesSet).sort();
+    if (!faccionesUnicas.includes("Independiente")) faccionesUnicas.push("Independiente");
+
     const faccionBuscada = formData.faccion?.toLowerCase().trim();
     
-    // Aplicamos los filtros excluyendo a los ocupados
     const soldadosDisponibles = soldados.filter(s => 
         (!faccionBuscada || (s.faccion || s.lider || '').toLowerCase().trim() === faccionBuscada) && 
         !assignedSoldiers.has(String(s.id))
@@ -106,7 +114,16 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                 <form onSubmit={handleSubmit}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                         <div className="grupo-input"><label>Nombre (Ej: Alpha-1)</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>Facción Titular</label><input name="faccion" value={formData.faccion} onChange={handleChange} required /></div>
+                        
+                        {/* SELECTOR DE FACCIÓN AUTOMATIZADO */}
+                        <div className="grupo-input">
+                            <label>Facción Titular</label>
+                            <select name="faccion" value={formData.faccion} onChange={handleChange} required>
+                                <option value="">-- Seleccionar --</option>
+                                {faccionesUnicas.map(f => <option key={f} value={f}>{f}</option>)}
+                            </select>
+                        </div>
+
                         <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Lema / Refrán</label><input name="lema" value={formData.lema} onChange={handleChange} /></div>
                         
                         <div className="grupo-input"><label>Tipo Operación</label>
@@ -126,7 +143,6 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                             <label style={{ color: '#4CAF50' }}>Comandante del Escuadrón</label>
                             <select name="lider_id" value={formData.lider_id} onChange={handleChange} required>
                                 <option value="">-- Seleccionar Comandante --</option>
-                                {/* Si editamos, forzamos que su propio líder actual se muestre incluso si estuviera en el Set por error */}
                                 {soldados.filter(s => s.id === formData.lider_id || soldadosDisponibles.includes(s)).map(s => <option key={s.id} value={s.id}>{s.nombre} ({s.clase})</option>)}
                             </select>
                         </div>
@@ -177,7 +193,7 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                             <h4 style={{ margin: '0 0 10px 0', color: '#fff' }}>Panel de Control GM (Privado)</h4>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                                 <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label style={{color:'#FF9800'}}>Moral (0-100):</label><input type="number" name="moral" value={formData.moral} onChange={handleChange} min="0" max="100" /></div>
-                                <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label style={{color:'#9C27B0'}}>Bono CR Global:</label><input type="number" name="bono_cr" value={formData.bono_cr} onChange={handleChange} step="any" /></div>
+                                <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label style={{color:'#9C27B0'}}>Bono TR Global:</label><input type="number" name="bono_cr" value={formData.bono_cr} onChange={handleChange} step="any" /></div>
                                 <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label style={{color:'#00BCD4'}}>XP Escuadrón:</label><input type="number" name="xp_escuadron" value={formData.xp_escuadron} onChange={handleChange} step="any" /></div>
                             </div>
                         </div>
