@@ -4,17 +4,20 @@ import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestor
 import { useData } from '../context/DataContext';
 
 export default function ModalDroide({ isOpen, onClose, droideData }) {
-    const { recargarTodo } = useData();
+    const { recargarTodo, userRole } = useData();
+    const esGM = userRole === 'GM';
+
     const estadoInicial = {
         nombre: '', modelo: '', fabricante: '', rol: 'Astromecánico', req_rango: 1, 
-        hp: 0, ac: 0, vel: 0, sensores: '', herramientas: '', mod_cr: 0, foto: ''
+        hp: 0, ac: 0, vel: 0, sensores: '', herramientas: '', mod_cr: 0, foto: '',
+        propietario: esGM ? 'Global' : (userRole || 'Global')
     };
     const [formData, setFormData] = useState(estadoInicial);
 
     useEffect(() => {
         if (droideData) setFormData(droideData);
-        else setFormData(estadoInicial);
-    }, [droideData, isOpen]);
+        else setFormData({ ...estadoInicial, propietario: esGM ? 'Global' : (userRole || 'Global') });
+    }, [droideData, isOpen, esGM, userRole]);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -48,7 +51,7 @@ export default function ModalDroide({ isOpen, onClose, droideData }) {
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal" style={{ borderTop: '4px solid #00BCD4', width: '500px' }}>
+            <div className="contenido-modal" style={{ borderTop: '4px solid #00BCD4', width: '550px' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
                 <h2 style={{ color: '#00BCD4', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>
                     {droideData ? '⚙️ Modificar Droide' : '🤖 Registrar Droide'}
@@ -80,11 +83,24 @@ export default function ModalDroide({ isOpen, onClose, droideData }) {
                         <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Sensores y Ópticas</label><input name="sensores" value={formData.sensores} onChange={handleChange} placeholder="Ej: Visión Infrarroja, Radar 50m" /></div>
                         <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Herramientas / Armas</label><input name="herramientas" value={formData.herramientas} onChange={handleChange} placeholder="Ej: Soplete, Interfaz de hackeo" /></div>
                         
-                        <div className="grupo-input"><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} /></div>
+                        {/* NUEVO SELECTOR DE PROPIETARIO */}
+                        <div className="grupo-input">
+                            <label style={{ color: '#FFC107' }}>Propietario / Facción:</label>
+                            <select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} style={{ borderColor: '#FFC107' }} disabled={!esGM}>
+                                <option value="Global">🌐 Uso Global (Público)</option>
+                                <option value="Cazador">🏳️ Cazador</option>
+                                <option value="Lucian">🏳️ Lucian</option>
+                                <option value="Brick">🏳️ Brick</option>
+                                <option value="William">🏳️ William</option>
+                                <option value="H">🏳️ H</option>
+                            </select>
+                        </div>
+
                         <div className="grupo-input"><label>Mod. T.R. (+)</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="any" /></div>
+                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} /></div>
                     </div>
 
-                    <div className="botones-modal" style={{ justifyContent: droideData ? 'space-between' : 'flex-end' }}>
+                    <div className="botones-modal" style={{ justifyContent: droideData ? 'space-between' : 'flex-end', marginTop: '15px' }}>
                         {droideData && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
                         <button type="submit" className="btn-accion" style={{ backgroundColor: '#00BCD4', color: '#000' }}>Inicializar Droide</button>
                     </div>

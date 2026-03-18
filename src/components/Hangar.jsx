@@ -6,25 +6,31 @@ import ModalVehiculo from './ModalVehiculo';
 import ModalDroide from './ModalDroide';
 
 export default function Hangar() {
-    const { vehiculos, escuadrones, recargarTodo } = useData();
+    const { vehiculos, escuadrones, recargarTodo, userRole } = useData();
     
-    // --- ESTADOS (¡Ahora correctamente adentro de la función!) ---
     const [activoSeleccionado, setActivoSeleccionado] = useState(null);
     const [isModalVehiculoOpen, setIsModalVehiculoOpen] = useState(false);
     const [isModalDroideOpen, setIsModalDroideOpen] = useState(false);
     const [vehiculoAEditar, setVehiculoAEditar] = useState(null);
     const [droideAEditar, setDroideAEditar] = useState(null);
 
-    // Separamos los activos por categoría
+    // --- VARIABLES DE SEGURIDAD ---
+    const esGM = userRole === 'GM';
+    const esInvitado = !userRole || userRole === 'Espectador';
+    
+    // Puede editar si es GM, o si el activo es suyo. (Los globales solo los edita el GM)
+    const puedeEditar = (activo) => {
+        if (esGM) return true;
+        if (esInvitado) return false;
+        return activo?.propietario === userRole;
+    };
+
     const vehiculosList = vehiculos.filter(v => !v.categoria || v.categoria === 'Vehículo');
     const droidesList = vehiculos.filter(v => v.categoria === 'Droide');
 
-    // --- FUNCIONES DE CÁLCULO PARA EL DASHBOARD ---
     const cVeh = (prop, val) => vehiculosList.filter(v => v[prop] === val).length;
     const cDr = (val) => droidesList.filter(d => d.rol === val).length;
 
-    // --- RENDERIZADO DE LA LISTA IZQUIERDA ---
-// --- RENDERIZADO DE LA LISTA IZQUIERDA ---
     const renderListaActivos = (titulo, items, color, icono, onAdd) => {
         return (
             <div className="grupo-lider" style={{ backgroundColor: '#0b0f19', padding: '10px', borderRadius: '6px', border: '1px solid #1a2235', marginBottom: '15px' }}>
@@ -33,10 +39,12 @@ export default function Hangar() {
                         <h3 style={{ color: color, margin: 0, textTransform: 'uppercase', fontSize: '1rem', fontFamily: 'monospace' }}>{icono} {titulo}s</h3>
                         <span className="contador-tropas" style={{ backgroundColor: color, color: '#000', fontWeight: 'bold' }}>{items.length}</span>
                     </div>
-                    {/* Botón dinámico expansible */}
-                    <button className="btn-reclutar-mini" onClick={onAdd}>
-                        <span className="icono">+</span> <span className="texto">AÑADIR</span>
-                    </button>
+                    {/* OCULTAMOS EL BOTÓN DE AÑADIR A INVITADOS */}
+                    {!esInvitado && (
+                        <button className="btn-reclutar-mini" onClick={onAdd}>
+                            <span className="icono">+</span> <span className="texto">AÑADIR</span>
+                        </button>
+                    )}
                 </div>
                 <div style={{ marginTop: '10px' }}>
                     {items.length === 0 ? (
@@ -78,29 +86,22 @@ export default function Hangar() {
 
     return (
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
-            {/* CABECERA LIMPIA */}
             <div className="panel-acciones" style={{ borderTop: '5px solid #795548', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#795548', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Transporte y Soporte</h2>
             </div>
             
             <div style={{ display: 'flex', gap: '20px' }}>
-                {/* PANEL IZQUIERDO CON BOTONES INCORPORADOS */}
                 <div style={{ flex: 1, backgroundColor: '#0b0f19', borderRadius: '8px', padding: '15px', height: '650px', overflowY: 'auto', border: '1px solid #1a2235' }}>
                     {renderListaActivos('Vehículo', vehiculosList, '#795548', '🚀', () => { setVehiculoAEditar(null); setIsModalVehiculoOpen(true); })}
                     {renderListaActivos('Droide', droidesList, '#00BCD4', '🤖', () => { setDroideAEditar(null); setIsModalDroideOpen(true); })}
                 </div>
-        
 
-
-                {/* PANEL DERECHO: VISOR DE DETALLES */}
                 <div style={{ flex: 1.5 }}>
                     {!activoSeleccionado ? (
-                        /* DASHBOARD DEL HANGAR (VISTA GLOBAL) */
                         <div style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease' }}>
                             <p style={{ textAlign: 'center', color: '#8892b0', marginBottom: '20px', fontStyle: 'italic' }}>Selecciona un activo del panel izquierdo para ver sus planos técnicos.</p>
                             
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                {/* Resumen Vehículos */}
                                 <div style={{ background: '#0b0f19', padding: '20px', borderRadius: '8px', borderTop: '3px solid #795548', border: '1px solid #1a2235' }}>
                                     <h3 style={{ color: '#795548', margin: '0 0 15px 0', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.2rem' }}>🚀 Vehículos: {vehiculosList.length}</h3>
                                     <div style={{ display: 'flex', gap: '15px', fontFamily: 'monospace', fontSize: '0.85rem' }}>
@@ -120,7 +121,6 @@ export default function Hangar() {
                                     </div>
                                 </div>
 
-                                {/* Resumen Droides */}
                                 <div style={{ background: '#0b0f19', padding: '20px', borderRadius: '8px', borderTop: '3px solid #00BCD4', border: '1px solid #1a2235' }}>
                                     <h3 style={{ color: '#00BCD4', margin: '0 0 15px 0', textAlign: 'center', fontFamily: 'monospace', fontSize: '1.2rem' }}>🤖 Droides: {droidesList.length}</h3>
                                     <div style={{ columnCount: 2, columnGap: '15px', fontFamily: 'monospace', fontSize: '0.85rem' }}>
@@ -134,20 +134,23 @@ export default function Hangar() {
                             </div>
                         </div>
                     ) : (
-                        /* DETALLES DEL ACTIVO SELECCIONADO */
                         <div className="tarjeta-soldado" style={{ position: 'relative', borderTop: `5px solid ${activoSeleccionado.categoria === 'Droide' ? '#00BCD4' : '#795548'}`, animation: 'fadeIn 0.3s ease' }}>
                             
                             <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px', zIndex: 10 }}>
                                 <button className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }} onClick={() => setActivoSeleccionado(null)}>⬅ Volver</button>
-                                <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => {
-                                    if (activoSeleccionado.categoria === 'Droide') {
-                                        setDroideAEditar(activoSeleccionado);
-                                        setIsModalDroideOpen(true);
-                                    } else {
-                                        setVehiculoAEditar(activoSeleccionado);
-                                        setIsModalVehiculoOpen(true);
-                                    }
-                                }}>⚙️ Modificar</button>
+                                
+                                {/* EL BOTÓN DE MODIFICAR SOLO APARECE SI TIENES PERMISO */}
+                                {puedeEditar(activoSeleccionado) && (
+                                    <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => {
+                                        if (activoSeleccionado.categoria === 'Droide') {
+                                            setDroideAEditar(activoSeleccionado);
+                                            setIsModalDroideOpen(true);
+                                        } else {
+                                            setVehiculoAEditar(activoSeleccionado);
+                                            setIsModalVehiculoOpen(true);
+                                        }
+                                    }}>⚙️ Modificar</button>
+                                )}
                             </div>
 
                             <div className="cabecera-tarjeta" style={{ alignItems: 'flex-start', borderBottom: '1px solid #1a2235', paddingBottom: '20px', marginBottom: '20px' }}>
@@ -156,14 +159,19 @@ export default function Hangar() {
                                     <h2 style={{ margin: '0', color: activoSeleccionado.categoria === 'Droide' ? '#00BCD4' : '#795548', fontSize: '2rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>{activoSeleccionado.nombre}</h2>
                                     <h4 style={{ margin: '0 0 10px 0', color: '#8892b0', fontStyle: 'italic' }}>{activoSeleccionado.modelo || 'Sin modelo'}</h4>
                                     
-                                    <span style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px', color: '#00E5FF', fontWeight: 'bold', fontSize: '0.85rem', display: 'inline-block', marginBottom: '5px' }}>
-                                        {activoSeleccionado.categoria === 'Droide' ? `Droide | ${activoSeleccionado.rol}` : `${activoSeleccionado.entorno} | ${activoSeleccionado.rol}`}
-                                    </span>
+                                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '5px' }}>
+                                        <span style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px', color: '#00E5FF', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                            {activoSeleccionado.categoria === 'Droide' ? `Droide | ${activoSeleccionado.rol}` : `${activoSeleccionado.entorno} | ${activoSeleccionado.rol}`}
+                                        </span>
+                                        {/* INDICADOR VISUAL DEL DUEÑO */}
+                                        <span style={{ backgroundColor: '#1a1a24', padding: '4px 8px', borderRadius: '4px', color: '#FFC107', fontSize: '0.85rem', border: '1px solid #FFC107' }}>
+                                            🏳️ {activoSeleccionado.propietario || 'Global'}
+                                        </span>
+                                    </div>
                                     <span style={{ color: '#aaa', fontSize: '0.8rem', display: 'block' }}>Fabricante: {activoSeleccionado.fabricante || 'Desconocido'}</span>
                                 </div>
                             </div>
                             
-                            {/* Estadísticas de Combate */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px', backgroundColor: '#1a2235', padding: '15px', borderRadius: '6px' }}>
                                 <div style={{ textAlign: 'center' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#8892b0', textTransform: 'uppercase' }}>Integridad (HP)</span><span style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '1.2rem', fontFamily: 'monospace' }}>{activoSeleccionado.hp || 0}</span></div>
                                 <div style={{ textAlign: 'center', borderLeft: '1px solid #3f3f5a' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#8892b0', textTransform: 'uppercase' }}>Blindaje (AC)</span><span style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '1.2rem', fontFamily: 'monospace' }}>{activoSeleccionado.ac || 0}</span></div>
@@ -171,7 +179,6 @@ export default function Hangar() {
                                 <div style={{ textAlign: 'center', borderLeft: '1px solid #3f3f5a' }}><span style={{ display: 'block', fontSize: '0.7rem', color: '#8892b0', textTransform: 'uppercase' }}>Aumento CR</span><span style={{ color: '#9C27B0', fontWeight: 'bold', fontSize: '1.2rem', fontFamily: 'monospace' }}>+{activoSeleccionado.mod_cr || 0}</span></div>
                             </div>
 
-                            {/* Especificaciones Técnicas (Dinámico) */}
                             <div style={{ borderTop: '1px dashed #3f3f5a', paddingTop: '15px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                 {activoSeleccionado.categoria === 'Droide' ? (
                                     <>
@@ -207,16 +214,8 @@ export default function Hangar() {
                 </div>
             </div>
 
-            <ModalVehiculo 
-                isOpen={isModalVehiculoOpen} 
-                onClose={() => { setIsModalVehiculoOpen(false); setActivoSeleccionado(null); }} 
-                vehiculoData={vehiculoAEditar} 
-            />
-            <ModalDroide 
-                isOpen={isModalDroideOpen} 
-                onClose={() => { setIsModalDroideOpen(false); setActivoSeleccionado(null); }} 
-                droideData={droideAEditar} 
-            />
+            <ModalVehiculo isOpen={isModalVehiculoOpen} onClose={() => { setIsModalVehiculoOpen(false); setActivoSeleccionado(null); }} vehiculoData={vehiculoAEditar} />
+            <ModalDroide isOpen={isModalDroideOpen} onClose={() => { setIsModalDroideOpen(false); setActivoSeleccionado(null); }} droideData={droideAEditar} />
         </div>
     );
 }

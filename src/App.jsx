@@ -1,31 +1,53 @@
 import { useState, useEffect } from 'react';
-import { useData } from './context/DataContext'; // Importamos el cerebro
+import { useData } from './context/DataContext'; 
 import './index.css';
 import Barracones from './components/Barracones';
 import Armeria from './components/Armeria';
 import Hangar from './components/Hangar';
 import Escuadrones from './components/Escuadrones';
 import Misiones from './components/Misiones';
+import ModalLogin from './components/ModalLogin'; // IMPORTAMOS EL MODAL
 
 function App() {
   const [vistaActiva, setVistaActiva] = useState('barracones');
-  const { soldados, loading } = useData();
+  const [isLoginOpen, setIsLoginOpen] = useState(false); // Estado para abrir/cerrar modal
+  
+  const { authLoading, user, userRole, logout } = useData();
 
-  // --- NUEVO: RECEPTOR DE SEÑALES PARA SALTO DE PESTAÑA ---
   useEffect(() => {
     const saltarAArmeria = () => setVistaActiva('armeria');
     window.addEventListener('salto_armeria', saltarAArmeria);
     return () => window.removeEventListener('salto_armeria', saltarAArmeria);
   }, []);
-  // --------------------------------------------------------
   
+  if (authLoading) {
+      return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#00BCD4', backgroundColor: '#0a0a0f' }}>Estableciendo conexión encriptada...</div>;
+  }
+
   return (
     <>
       <header className="cabecera-principal" style={{ position: 'relative' }}>
         <h1>Asociación de Cazadores</h1>
         
-        <div style={{ position: 'absolute', right: '20px', top: '20px' }}>
-            <button className="btn-accion pequeno" style={{ backgroundColor: '#555' }}>Acceso Comandante</button>
+        {/* --- LA ESQUINA SUPERIOR DERECHA --- */}
+        <div style={{ position: 'absolute', right: '20px', top: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            {user ? (
+                <>
+                    <span style={{ color: userRole === 'GM' ? '#F44336' : '#4CAF50', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>
+                        Sesión: {userRole}
+                    </span>
+                    <button onClick={logout} className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }}>Desconectar</button>
+                </>
+            ) : (
+                <>
+                    <span style={{ color: '#aaa', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>
+                        Sesión: Invitado
+                    </span>
+                    <button onClick={() => setIsLoginOpen(true)} className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#111', fontWeight: 'bold' }}>
+                        Acceso Comandante
+                    </button>
+                </>
+            )}
         </div>
 
         <div className="menu-navegacion">
@@ -54,6 +76,9 @@ function App() {
         {vistaActiva === 'armeria' && <Armeria />}
         {vistaActiva === 'misiones' && <Misiones />}
       </main>
+
+      {/* Insertamos el modal al final */}
+      <ModalLogin isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </>
   )
 }

@@ -27,6 +27,7 @@ const formatoTiempo = (ms) => {
     return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 };
 
+// --- PLANTILLAS RESTAURADAS ---
 const PLANTILLAS = [
     { titulo: "Purga de Nido", lugar: "Mandalore", descripcion: "Un informante tiene códigos críticos.", rango: "B", cr_req: 8, tiempo_viaje: 3, tiempo_ejecucion: 2, recompensa: "1500 CR", xp: 0 },
     { titulo: "Infiltración", lugar: "Tatooine", descripcion: "Se detectó una anomalía biológica en el sector.", rango: "D", cr_req: 3, tiempo_viaje: 2, tiempo_ejecucion: 1, recompensa: "500 CR", xp: 0 },
@@ -34,7 +35,7 @@ const PLANTILLAS = [
 ];
 
 export default function Misiones() {
-    const { escuadrones, soldados, vehiculos, equipo, recargarTodo } = useData();
+    const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
     const [misiones, setMisiones] = useState([]);
     
     const [isModalMisionOpen, setIsModalMisionOpen] = useState(false);
@@ -44,11 +45,21 @@ export default function Misiones() {
     const [reporteAAR, setReporteAAR] = useState(null);
     const [horaActual, setHoraActual] = useState(Date.now()); 
 
+    // --- SEGURIDAD ---
+    const esGM = userRole === 'GM';
+    const esInvitado = !userRole || userRole === 'Espectador';
+
     useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setMisiones(data.filter(m => m.estado !== 'Archivada')); 
-        });
+        const unsubscribe = onSnapshot(
+            collection(db, "misiones"), 
+            (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setMisiones(data.filter(m => m.estado !== 'Archivada')); 
+            },
+            (error) => {
+                console.warn("Acceso denegado o conexión pausada:", error.message);
+            }
+        );
         return () => unsubscribe();
     }, []);
 
@@ -57,6 +68,7 @@ export default function Misiones() {
         return () => clearInterval(timer);
     }, []);
 
+    // --- FUNCIÓN AUTO-GENERAR RESTAURADA ---
     const generarMisionAleatoria = async () => {
         const template = PLANTILLAS[Math.floor(Math.random() * PLANTILLAS.length)];
         const horasAleatorias = Math.floor(Math.random() * 60) + 12; 
@@ -67,6 +79,7 @@ export default function Misiones() {
     };
 
     const eliminarMision = async (mision) => {
+        if (!esGM) return;
         if (window.confirm("¿Estás seguro de que deseas revocar y borrar este contrato?")) {
             const asignados = mision.escuadrones_id || [];
             for (let id of asignados) {
@@ -130,19 +143,11 @@ export default function Misiones() {
         if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
         const exito = (Math.random() * 100) <= probExitoReal; 
-        const resultadoTexto = exito 
-            ? `Contrato cumplido con éxito. Recompensa asegurada.` 
-            : `Objetivo fallido. Las fuerzas se retiraron con fuertes penalizaciones.`;
+        const resultadoTexto = exito ? `Contrato cumplido con éxito. Recompensa asegurada.` : `Objetivo fallido. Las fuerzas se retiraron con fuertes penalizaciones.`;
         
         const valoresRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 };
         const valorRango = valoresRango[mision.rango] || 3; 
-        let puntosPrestigioDelta = 0;
-
-        if (exito) {
-            puntosPrestigioDelta = 2 + Math.round((100 - probExitoReal) / 10) + valorRango;
-        } else {
-            puntosPrestigioDelta = -1 - Math.round(probExitoReal / 10) - (8 - valorRango);
-        }
+        let puntosPrestigioDelta = exito ? (2 + Math.round((100 - probExitoReal) / 10) + valorRango) : (-1 - Math.round(probExitoReal / 10) - (8 - valorRango));
 
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
@@ -164,7 +169,6 @@ export default function Misiones() {
             const esc = escuadrones.find(e => e.id === escId);
             if (!esc) continue;
             nombresEscuadrones.push(esc.nombre);
-
             const miembros = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
             const idsUnicos = [...new Set(miembros)];
             let bajasEscuadron = [];
@@ -177,75 +181,59 @@ export default function Misiones() {
                 let burlos = Number(soldado.veces_salvado || 0);
                 let newXp = Number(soldado.xp || 0) + xpBaseGained;
                 let newLevel = Number(soldado.nivel || 1);
-                let leveledUp = false;
                 let txtLogParts = [];
 
-                let numOperaciones = Number(soldado.operaciones || 0) + 1;
-                let numExitos = Number(soldado.exitos || 0) + (exito ? 1 : 0);
-                
                 const rangoLetra = mision.rango || 'C';
                 let medallas = soldado.medallas ? { ...soldado.medallas } : { 'E': 0, 'D': 0, 'C': 0, 'B': 0, 'A': 0, 'S': 0, 'SS': 0 };
-                if (exito) { medallas[rangoLetra] = (Number(medallas[rangoLetra]) || 0) + 1; }
+                if (exito) medallas[rangoLetra] = (Number(medallas[rangoLetra]) || 0) + 1;
 
-                while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) { newLevel++; leveledUp = true; }
-
-                if (leveledUp) txtLogParts.push(`⭐ ¡${soldado.nombre} ascendió al Nivel ${newLevel}!`);
+                while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) newLevel++;
 
                 if (estadoSalud !== 'Muerto') {
                     if ((Math.random() * 100) < riskStats.dea) {
-                        if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} sufrió heridas letales pero sobrevivió (Burló Muerte x1).`); } 
-                        else if (burlos === 1) {
-                            if (Math.random() < 0.80) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} fue salvado in-extremis (Burló Muerte x2).`); } 
-                            else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha caído en combate (K.I.A).`); }
-                        } else if (burlos === 2) {
-                            if (Math.random() < 0.50) { burlos = 3; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló a la muerte por un milagro (Burló Muerte x3).`); } 
-                            else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha caído en combate (K.I.A).`); }
-                        } else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} ha muerto definitivamente.`); }
+                        if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
+                        else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } } 
+                        else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); }
                     } else if (estadoSalud !== 'Gravísima' && (Math.random() * 100) < riskStats.inj) {
                         const rollSev = Math.random() * 100;
-                        if (rollSev < 50) { estadoSalud = 'Leve'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas leves.`); }
-                        else if (rollSev < 85) { estadoSalud = 'Media'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas moderadas.`); }
-                        else { estadoSalud = 'Grave'; txtLogParts.push(`🩸 ${soldado.nombre} sufrió heridas graves.`); }
+                        if (rollSev < 50) { estadoSalud = 'Leve'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas leves.`); }
+                        else if (rollSev < 85) { estadoSalud = 'Media'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas moderadas.`); }
+                        else { estadoSalud = 'Grave'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas graves.`); }
                     }
                 }
 
                 if (txtLogParts.length > 0) {
-                    const mensajeFinal = txtLogParts.join(' ');
-                    bajasEscuadron.push(mensajeFinal);
-                    reporteBajasGlobal.push(mensajeFinal);
+                    const msg = txtLogParts.join(' ');
+                    bajasEscuadron.push(msg);
+                    reporteBajasGlobal.push(msg);
                 }
                 
-                let puntosActuales = Number(soldado.puntos_prestigio || 0);
-                let nuevosPuntos = puntosActuales + puntosPrestigioDelta;
-
                 await updateDoc(doc(db, "soldados", sId), { 
                     estado_salud: estadoSalud, veces_salvado: burlos, xp: newXp, nivel: newLevel,
-                    operaciones: numOperaciones, exitos: numExitos, medallas: medallas, puntos_prestigio: nuevosPuntos
+                    operaciones: (Number(soldado.operaciones || 0) + 1), exitos: (Number(soldado.exitos || 0) + (exito ? 1 : 0)), medallas,
+                    puntos_prestigio: Number(soldado.puntos_prestigio || 0) + puntosPrestigioDelta
                 });
             }
 
             let moralActual = Number(esc.moral);
             if (isNaN(moralActual)) moralActual = 50;
-            let nuevaMoral = exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15);
-            let nuevaXpEscuadron = (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada;
-
-            const nuevoRegistro = { 
-                fecha: new Date().toLocaleDateString(), titulo: mision.titulo, 
-                descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron 
-            };
             
             await updateDoc(doc(db, "escuadrones", esc.id), {
-                estado: 'En Base', bitacora: arrayUnion(nuevoRegistro),
+                estado: 'En Base', bitacora: arrayUnion({ fecha: new Date().toLocaleDateString(), titulo: mision.titulo, descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron }),
                 mtotales: (Number(esc.mtotales) || 0) + 1, mexito: (Number(esc.mexito) || 0) + (exito ? 1 : 0),
-                moral: nuevaMoral, xp_escuadron: nuevaXpEscuadron
+                moral: exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15), xp_escuadron: (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada
             });
         }
 
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
         
         setReporteAAR({
-            titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "),
-            exito, descripcion: resultadoTexto, xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida,
+            titulo: mision.titulo, 
+            escuadronNombre: nombresEscuadrones.join(" + "),
+            exito, 
+            descripcion: resultadoTexto, 
+            xp: `+${xpBaseGained} XP`, 
+            recompensas: recompensaObtenida,
             xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), 
             bajas: reporteBajasGlobal
         });
@@ -256,10 +244,14 @@ export default function Misiones() {
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div className="panel-acciones" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '5px solid #F44336', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#F44336', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Tablero de Contratos</h2>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
-                    <button className="btn-accion" style={{ backgroundColor: '#9C27B0', color: '#fff' }} onClick={generarMisionAleatoria}>✨ Auto-Generar</button>
-                </div>
+                
+                {/* SOLO GM PUEDE CREAR CONTRATOS MANUALES O AUTO-GENERAR */}
+                {esGM && (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
+                        <button className="btn-accion" style={{ backgroundColor: '#9C27B0', color: '#fff' }} onClick={generarMisionAleatoria}>✨ Auto-Generar</button>
+                    </div>
+                )}
             </div>
 
             {misiones.length === 0 ? (
@@ -321,46 +313,28 @@ export default function Misiones() {
                         }
 
                         let crFuerzaTotal = 0, probExito = 0;
-                        let moralPromedio = 0;
-                        let reduccionViajeMaxPct = 0;
-
                         if (!esNueva) {
+                            let moralPromedio = 0;
                             escuadronesAsignados.forEach(esc => {
                                 crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo);
                                 moralPromedio += getMoralData(esc.moral).mod;
-                                
-                                if (esc.nave_id) {
-                                    const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
-                                    if (nave) {
-                                        const r = Number(nave.req_rango || 1);
-                                        const pct = r === 1 ? 0.10 : r === 2 ? 0.15 : r === 3 ? 0.25 : r === 4 ? 0.35 : r === 5 ? 0.50 : 0;
-                                        if (pct > reduccionViajeMaxPct) reduccionViajeMaxPct = pct;
-                                    }
-                                }
                             });
                             moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
-                            crFuerzaTotal = Math.round(crFuerzaTotal * 100) / 100;
-                            let baseProb = (crFuerzaTotal / (m.cr_req || 1)) * 75;
-                            probExito = Math.min(95, Math.max(5, Math.round(baseProb) + moralPromedio));
+                            probExito = Math.min(95, Math.max(5, Math.round((crFuerzaTotal / (m.cr_req || 1)) * 75) + moralPromedio));
                         }
-
-                        const stats = RISK_TABLE[m.rango] || RISK_TABLE['C'];
-                        const xpMision = m.xp ? Number(m.xp) : (m.cr_req || 1) * 150;
-                        const tiempoViajeBase = Number(m.tiempo_viaje || 0);
-                        const tiempoEjecucion = Number(m.tiempo_ejecucion || 3);
-                        const reduccionDias = tiempoViajeBase * reduccionViajeMaxPct;
-                        const tiempoViajeReal = Math.max(0, tiempoViajeBase - reduccionDias);
-                        const duracionFinal = Math.round((tiempoViajeReal + tiempoEjecucion) * 10) / 10;
-                        const redStr = Math.round(reduccionDias * 10) / 10;
 
                         return (
                             <div key={m.id} className="tarjeta-escuadron" style={{ position: 'relative', backgroundColor: '#111118', borderTop: `5px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : (faseEstado === 'lista' ? '#9C27B0' : '#00BCD4'))}`, borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }}>
-                                <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '5px' }}>
-                                    {!estaDesplegada && (
-                                        <button onClick={() => { setMisionParaEditar(m); setIsModalMisionOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', opacity: 0.7 }} title="Editar Contrato">✏️</button>
-                                    )}
-                                    <button onClick={() => eliminarMision(m)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', opacity: 0.7 }} title="Eliminar Contrato">🗑️</button>
-                                </div>
+                                
+                                {/* SOLO GM PUEDE EDITAR Y BORRAR CONTRATOS */}
+                                {esGM && (
+                                    <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '5px' }}>
+                                        {!estaDesplegada && (
+                                            <button onClick={() => { setMisionParaEditar(m); setIsModalMisionOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', opacity: 0.7 }} title="Editar Contrato">✏️</button>
+                                        )}
+                                        <button onClick={() => eliminarMision(m)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', opacity: 0.7 }} title="Eliminar Contrato">🗑️</button>
+                                    </div>
+                                )}
 
                                 <div style={{ paddingRight: '45px' }}>
                                     <h3 style={{ margin: '0 0 5px 0', color: expirada ? '#888' : '#fff', fontSize: '1.2rem', textDecoration: expirada ? 'line-through' : 'none' }}>{m.titulo}</h3>
@@ -385,9 +359,9 @@ export default function Misiones() {
                                 <div style={{ borderTop: '1px dashed #3f3f5a', paddingTop: '10px', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>
-                                            ⏳ Duración: <b>{duracionFinal} d</b> {redStr > 0 && <span style={{color: '#8BC34A'}}>(-{redStr}d Viaje)</span>}
+                                            ⏳ Duración: <b>{Math.round((Number(m.tiempo_viaje || 0) + Number(m.tiempo_ejecucion || 3)) * 10) / 10} d</b>
                                         </span>
-                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>⭐ XP Est: <b>+{xpMision}</b></span>
+                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>⭐ XP Est: <b>+{(m.xp ? Number(m.xp) : (m.cr_req || 1) * 150)}</b></span>
                                     </div>
                                     <div style={{ fontSize: '0.8rem', color: '#FFC107' }}>💰 <b>{m.recompensa || 'Por definir'}</b></div>
                                 </div>
@@ -419,61 +393,71 @@ export default function Misiones() {
                                                 <div style={{ fontSize: '0.9rem', color: '#e0e0e0' }}>
                                                     <p style={{ margin: '0 0 5px 0' }}>🎯 TR Fuerza: <b style={{color: '#00BCD4'}}>{crFuerzaTotal.toFixed(1)}</b> vs CR Objetivo: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
                                                     <p style={{ margin: '0 0 5px 0' }}>🎲 Prob. Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{probExito}%</b></p>
-                                                    <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {stats.inj}% Heridas | {stats.dea}% K.I.A.</p>
+                                                    <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {RISK_TABLE[m.rango]?.inj || 20}% Heridas | {RISK_TABLE[m.rango]?.dea || 3}% K.I.A.</p>
                                                 </div>
                                             </>
                                         ) : (
                                             <div style={{ textAlign: 'center' }}>
                                                 <p style={{ margin: '0 0 5px 0', color: '#888', fontSize: '0.85rem' }}>Fuerzas sin asignar.</p>
                                                 <p style={{ margin: '0 0 5px 0', color: '#e0e0e0', fontSize: '0.9rem' }}>🎯 Objetivo CR: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
-                                                <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {stats.inj}% Heridas | {stats.dea}% K.I.A.</p>
+                                                <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {RISK_TABLE[m.rango]?.inj || 20}% Heridas | {RISK_TABLE[m.rango]?.dea || 3}% K.I.A.</p>
                                             </div>
                                         )}
                                     </div>
                                 )}
+
+                                {estaDesplegada && (
+                                    <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: '1px solid #3f3f5a', marginTop: 'auto' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                            {escuadronesAsignados.map(e => <span key={e.id} style={{ backgroundColor: '#323245', padding: '4px 8px', borderRadius: '4px', color: '#00BCD4', fontSize: '0.75rem', fontWeight: 'bold' }}>🛡️ [{e.nombre}]</span>)}
+                                        </div>
+                                    </div>
+                                )}
                                 
-                                {/* BOTONERA TÁCTICA */}
-                                <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                                    {esNueva && (
-                                        <button className="btn-accion" style={{ flex: 1, backgroundColor: expirada ? '#333' : '#F44336', color: expirada ? '#888' : '#fff', cursor: expirada ? 'not-allowed' : 'pointer' }} onClick={() => { if (!expirada) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} disabled={expirada}>
-                                            {expirada ? "Contrato Expirado" : "Asignar Fuerzas"}
-                                        </button>
-                                    )}
-
-                                    {estaPreparando && (
-                                        <>
-                                            <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => { setMisionActiva(m); setIsModalDesplegarOpen(true); }}>
-                                                ⚙️ Reasignar
+                                {/* BOTONERA TÁCTICA (Solo visible para Usuarios Logueados) */}
+                                {!esInvitado && (
+                                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                                        {esNueva && (
+                                            <button className="btn-accion" style={{ flex: 1, backgroundColor: expirada ? '#333' : '#F44336', color: expirada ? '#888' : '#fff', cursor: expirada ? 'not-allowed' : 'pointer' }} onClick={() => { if (!expirada) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} disabled={expirada}>
+                                                {expirada ? "Contrato Expirado" : "Asignar Fuerzas"}
                                             </button>
-                                            <button className="btn-accion" style={{ flex: 2, backgroundColor: '#4CAF50', color: '#fff', fontSize: '0.85rem', padding: '10px', fontWeight: 'bold' }} onClick={() => iniciarDespliegueDefinitivo(m, escuadronesAsignados)}>
-                                                🚀 Iniciar Despliegue
-                                            </button>
-                                        </>
-                                    )}
+                                        )}
 
-                                    {estaDesplegada && (
-                                        <>
-                                            {sePuedeAbortar && (
-                                                <button className="btn-accion rojo" style={{ flex: 1, fontSize: '0.85rem', padding: '10px' }} onClick={() => abortarMision(m)}>
-                                                    🚨 Abortar (Retirada)
+                                        {estaPreparando && (
+                                            <>
+                                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => { setMisionActiva(m); setIsModalDesplegarOpen(true); }}>
+                                                    ⚙️ Reasignar
                                                 </button>
-                                            )}
-                                            {faseEstado === 'abortada_lista' ? (
-                                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => completarRetirada(m)}>
-                                                    🔙 Finalizar Retirada
+                                                <button className="btn-accion" style={{ flex: 2, backgroundColor: '#4CAF50', color: '#fff', fontSize: '0.85rem', padding: '10px', fontWeight: 'bold' }} onClick={() => iniciarDespliegueDefinitivo(m, escuadronesAsignados)}>
+                                                    🚀 Iniciar Despliegue
                                                 </button>
-                                            ) : faseEstado === 'lista' ? (
-                                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => resolverMision(m, probExito, crFuerzaTotal)}>
-                                                    ▶ Resolver Misión
-                                                </button>
-                                            ) : (
-                                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#333', color: '#888', fontSize: '0.85rem', padding: '10px', cursor: 'not-allowed' }} disabled>
-                                                    {faseEstado === 'abortando' ? 'Abortando...' : 'En Operación...'}
-                                                </button>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
+                                            </>
+                                        )}
+
+                                        {estaDesplegada && (
+                                            <>
+                                                {sePuedeAbortar && (
+                                                    <button className="btn-accion rojo" style={{ flex: 1, fontSize: '0.85rem', padding: '10px' }} onClick={() => abortarMision(m)}>
+                                                        🚨 Abortar (Retirada)
+                                                    </button>
+                                                )}
+                                                {faseEstado === 'abortada_lista' ? (
+                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => completarRetirada(m)}>
+                                                        🔙 Finalizar Retirada
+                                                    </button>
+                                                ) : faseEstado === 'lista' ? (
+                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => resolverMision(m, probExito, crFuerzaTotal)}>
+                                                        ▶ Resolver Misión
+                                                    </button>
+                                                ) : (
+                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#333', color: '#888', fontSize: '0.85rem', padding: '10px', cursor: 'not-allowed' }} disabled>
+                                                        {faseEstado === 'abortando' ? 'Abortando...' : 'En Operación...'}
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}

@@ -6,10 +6,10 @@ import { useData } from '../context/DataContext';
 export default function ModalEquipo({ isOpen, onClose, equipoData }) {
     const { recargarTodo } = useData();
     
-    // Añadimos los nuevos campos a la base de datos
     const estadoInicial = {
         nombre: '', foto: '', tipo: 'Arma_Principal', descripcion: '', stock: 1, 
-        mod_cr: 0, habilidad: '', reduccion_dmg: 0, rareza: 'Común'
+        mod_cr: 0, habilidad: '', reduccion_dmg: 0, rareza: 'Común',
+        propietario: 'Global' // <-- NUEVO CAMPO
     };
 
     const [formData, setFormData] = useState(estadoInicial);
@@ -82,7 +82,6 @@ export default function ModalEquipo({ isOpen, onClose, equipoData }) {
                                 </optgroup>
                             </select>
                         </div>
-                        {/* NUEVO SELECTOR DE RAREZA */}
                         <div className="grupo-input" style={{ flex: 1.5 }}>
                             <label>Rareza D&D:</label>
                             <select name="rareza" value={formData.rareza || 'Común'} onChange={handleChange}>
@@ -95,10 +94,23 @@ export default function ModalEquipo({ isOpen, onClose, equipoData }) {
                         </div>
                         <div className="grupo-input" style={{ flex: 1 }}><label>Stock:</label><input type="number" name="stock" value={formData.stock} onChange={handleChange} min="0" required /></div>
                     </div>
+
+                    {/* --- NUEVO: SELECTOR DE PROPIETARIO --- */}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <div className="grupo-input" style={{ flex: 1 }}><label>Descripción Narrativa:</label><input type="text" name="descripcion" value={formData.descripcion} onChange={handleChange} required /></div>
+                        <div className="grupo-input" style={{ flex: 1 }}>
+                            <label style={{ color: '#FFC107' }}>Propietario / Comandante:</label>
+                            <select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} style={{ borderColor: '#FFC107' }}>
+                                <option value="Global">🌐 Uso Global (Público)</option>
+                                <option value="Cazador">🏳️ Cazador</option>
+                                <option value="Lucian">🏳️ Lucian</option>
+                                <option value="Brick">🏳️ Brick</option>
+                                <option value="William">🏳️ William</option>
+                                <option value="H">🏳️ H</option>
+                            </select>
+                        </div>
+                    </div>
                     
-                    <div className="grupo-input"><label>Descripción Narrativa:</label><input type="text" name="descripcion" value={formData.descripcion} onChange={handleChange} required /></div>
-                    
-                    {/* NUEVO BLOQUE DE ESTADÍSTICAS TÁCTICAS */}
                     <div style={{ backgroundColor: '#111118', padding: '15px', borderRadius: '5px', border: '1px solid #3f3f5a', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                         <div className="grupo-input" style={{ flex: 1, margin: 0 }}>
                             <label style={{ color: '#00BCD4', textAlign: 'center' }}>+ TR (Tactical Rating):</label>

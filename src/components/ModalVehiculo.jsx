@@ -4,17 +4,22 @@ import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestor
 import { useData } from '../context/DataContext';
 
 export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
-    const { recargarTodo } = useData();
+    const { recargarTodo, userRole } = useData();
+    const esGM = userRole === 'GM';
+
     const estadoInicial = {
         nombre: '', modelo: '', fabricante: '', entorno: 'Terrestre', rol: 'Transporte',
-        req_rango: 1, hp: 0, ac: 0, vel: 0, armamento: '', pasajeros: 0, tripulacion: '', mod_cr: 0, foto: ''
+        req_rango: 1, hp: 0, ac: 0, vel: 0, armamento: '', pasajeros: 0, tripulacion: '', 
+        mod_cr: 0, foto: '',
+        propietario: esGM ? 'Global' : (userRole || 'Global') // <-- NUEVO
     };
+    
     const [formData, setFormData] = useState(estadoInicial);
 
     useEffect(() => {
         if (vehiculoData) setFormData(vehiculoData);
-        else setFormData(estadoInicial);
-    }, [vehiculoData, isOpen]);
+        else setFormData({ ...estadoInicial, propietario: esGM ? 'Global' : (userRole || 'Global') });
+    }, [vehiculoData, isOpen, esGM, userRole]);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -48,7 +53,7 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal" style={{ borderTop: '4px solid #795548', width: '500px' }}>
+            <div className="contenido-modal" style={{ borderTop: '4px solid #795548', width: '550px' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
                 <h2 style={{ color: '#795548', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>
                     {vehiculoData ? '⚙️ Modificar Vehículo' : '🚀 Registrar Vehículo'}
@@ -85,11 +90,24 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
                         <div className="grupo-input"><label>Tripulación Req.</label><input name="tripulacion" value={formData.tripulacion} onChange={handleChange} placeholder="Ej: 1 Piloto, 1 Artillero" /></div>
                         <div className="grupo-input"><label>Cap. Pasajeros</label><input type="number" name="pasajeros" value={formData.pasajeros} onChange={handleChange} /></div>
                         
-                        <div className="grupo-input"><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} placeholder="https://..." /></div>
+                        {/* NUEVO SELECTOR DE PROPIETARIO */}
+                        <div className="grupo-input">
+                            <label style={{ color: '#FFC107' }}>Propietario / Facción:</label>
+                            <select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} style={{ borderColor: '#FFC107' }} disabled={!esGM}>
+                                <option value="Global">🌐 Uso Global (Público)</option>
+                                <option value="Cazador">🏳️ Cazador</option>
+                                <option value="Lucian">🏳️ Lucian</option>
+                                <option value="Brick">🏳️ Brick</option>
+                                <option value="William">🏳️ William</option>
+                                <option value="H">🏳️ H</option>
+                            </select>
+                        </div>
+
                         <div className="grupo-input"><label>Mod. T.R. (+)</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="any" /></div>
+                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} placeholder="https://..." /></div>
                     </div>
 
-                    <div className="botones-modal" style={{ justifyContent: vehiculoData ? 'space-between' : 'flex-end' }}>
+                    <div className="botones-modal" style={{ justifyContent: vehiculoData ? 'space-between' : 'flex-end', marginTop: '15px' }}>
                         {vehiculoData && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
                         <button type="submit" className="btn-accion" style={{ backgroundColor: '#795548', color: '#fff' }}>Guardar en Hangar</button>
                     </div>

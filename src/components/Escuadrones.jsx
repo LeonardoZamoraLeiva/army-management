@@ -63,15 +63,27 @@ export const calcularTREscuadron = (escuadron, soldados, vehiculos, equipo) => {
 };
 
 export default function Escuadrones() {
-    const { escuadrones, soldados, vehiculos, equipo, recargarTodo } = useData();
+    // --- EXTRAEMOS EL ROL DE USUARIO ---
+    const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
     const [escuadronId, setEscuadronId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [escuadronAEditar, setEscuadronAEditar] = useState(null);
-    
-    // --- NUEVO ESTADO PARA ACORDEONES ---
     const [faccionesAbiertas, setFaccionesAbiertas] = useState({});
 
+    // --- VARIABLES DE SEGURIDAD ---
+    const esGM = userRole === 'GM';
+    const esInvitado = !userRole || userRole === 'Espectador';
+    
+    const puedeEditarEscuadron = (faccion) => {
+        if (esGM) return true;
+        if (esInvitado) return false;
+        return faccion === userRole;
+    };
+
     const escuadronActual = escuadrones.find(e => e.id === escuadronId);
+    
+    // ¿Tiene permiso sobre el escuadrón actualmente en pantalla?
+    const permisoSobreActual = escuadronActual ? puedeEditarEscuadron(escuadronActual.faccion) : false;
 
     const toggleFaccion = (faccion) => {
         setFaccionesAbiertas(prev => ({ ...prev, [faccion]: !prev[faccion] }));
@@ -124,11 +136,13 @@ export default function Escuadrones() {
     });
 
     const handleUpdateCampo = async (campo, valor) => {
+        if (!permisoSobreActual) return;
         await updateDoc(doc(db, "escuadrones", escuadronActual.id), { [campo]: valor });
         recargarTodo();
     };
 
     const handleUpdateMiembro = async (index, newId) => {
+        if (!permisoSobreActual) return;
         let nuevosMiembros = [...(escuadronActual.miembros || [])];
         nuevosMiembros[index] = newId;
         const arrayLimpio = nuevosMiembros.filter(Boolean);
@@ -136,7 +150,8 @@ export default function Escuadrones() {
         recargarTodo();
     };
 
-    const renderCard = (titulo, color, item, opciones, onChange, isLocked, reqText, placeholder) => {
+    // --- MODIFICADO: Acepta 'disableSelect' para bloquear la modificación visual ---
+    const renderCard = (titulo, color, item, opciones, onChange, isLocked, reqText, placeholder, disableSelect = false) => {
         if (isLocked) {
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
@@ -148,7 +163,12 @@ export default function Escuadrones() {
             );
         }
 
-        const selectStyle = { width: '100%', padding: '4px', backgroundColor: '#111', color: '#fff', border: '1px solid #333', borderRadius: '4px', fontSize: '0.8rem', outline: 'none', cursor: 'pointer', textAlign: 'center', textAlignLast: 'center', fontWeight: 'bold' };
+        const selectStyle = { 
+            width: '100%', padding: '4px', backgroundColor: '#111', color: '#fff', 
+            border: '1px solid #333', borderRadius: '4px', fontSize: '0.8rem', outline: 'none', 
+            cursor: disableSelect ? 'not-allowed' : 'pointer', textAlign: 'center', textAlignLast: 'center', 
+            fontWeight: 'bold', opacity: disableSelect ? 0.6 : 1 
+        };
 
         const svgText = item ? 'SIN FOTO' : 'VACÍO';
         const fallbackImg = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Crect width='150' height='150' fill='%23111118'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23666666' font-family='monospace' font-size='16'%3E${encodeURIComponent(svgText)}%3C/text%3E%3C/svg%3E`;
@@ -158,7 +178,7 @@ export default function Escuadrones() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
                 <div style={{ width: '100%', padding: '10px 5px', borderRadius: '8px', border: `2px solid ${color}`, backgroundColor: '#1a2235', boxSizing: 'border-box', boxShadow: titulo.includes('⭐') ? `0 0 15px ${color}33` : 'none' }}>
                     <img src={imgSrc} onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = fallbackImg; }} style={{ width: '70px', height: '70px', objectFit: 'cover', objectPosition: 'center top', borderRadius: '8px', border: '2px solid #3f3f5a', display: 'block', margin: '0 auto 8px auto' }} alt={titulo} />
-                    <select value={item?.id || ''} onChange={onChange} style={selectStyle} title="Cambiar Asignación">
+                    <select value={item?.id || ''} onChange={onChange} style={selectStyle} title={disableSelect ? "Acceso denegado" : "Cambiar Asignación"} disabled={disableSelect}>
                         <option value="">-- {placeholder} --</option>
                         {opciones.map(opt => <option key={opt.id} value={opt.id}>{opt.nombre}</option>)}
                     </select>
@@ -200,13 +220,16 @@ export default function Escuadrones() {
         const opcionesDroide = droidesList.filter(d => !assignedDroids.has(String(d.id)) || String(d.id) === String(droide?.id));
         const opcionesVehiculo = vehiculosList.filter(v => !assignedVehicles.has(String(v.id)) || String(v.id) === String(vehiculo?.id));
 
+        // Determinar si debemos bloquear los selectores visualmente
+        const deshabilitar = !permisoSobreActual;
+
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', width: '100%' }}>
-                    {renderCard('🛸 Nave', '#9C27B0', nave, opcionesNave, e => handleUpdateCampo('nave_id', e.target.value), false, '', 'Comercial')}
-                    {renderCard('⭐ Capitán', '#FF9800', lider, opcionesLider, e => handleUpdateCampo('lider_id', e.target.value), false, '', 'Relevar')}
-                    {renderCard('🤖 Droide', '#00BCD4', droide, opcionesDroide, e => handleUpdateCampo('droide_id', e.target.value), !rangoData.reqDr, 'Rango II', 'Aparcar')}
-                    {renderCard('🚙 Vehículo', '#795548', vehiculo, opcionesVehiculo, e => handleUpdateCampo('vehiculo_id', e.target.value), !rangoData.reqVeh, 'Rango IV', 'Aparcar')}
+                    {renderCard('🛸 Nave', '#9C27B0', nave, opcionesNave, e => handleUpdateCampo('nave_id', e.target.value), false, '', 'Comercial', deshabilitar)}
+                    {renderCard('⭐ Capitán', '#FF9800', lider, opcionesLider, e => handleUpdateCampo('lider_id', e.target.value), false, '', 'Relevar', deshabilitar)}
+                    {renderCard('🤖 Droide', '#00BCD4', droide, opcionesDroide, e => handleUpdateCampo('droide_id', e.target.value), !rangoData.reqDr, 'Rango II', 'Aparcar', deshabilitar)}
+                    {renderCard('🚙 Vehículo', '#795548', vehiculo, opcionesVehiculo, e => handleUpdateCampo('vehiculo_id', e.target.value), !rangoData.reqVeh, 'Rango IV', 'Aparcar', deshabilitar)}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', width: '100%' }}>
                     {[0, 1, 2, 3].map(i => {
@@ -214,7 +237,7 @@ export default function Escuadrones() {
                         const opOpts = soldadosFac.filter(s => !assignedSoldiers.has(String(s.id)) || String(s.id) === String(miembrosNormales[i]?.id));
                         return (
                             <div key={`op-${i}`}>
-                                {renderCard(`Operativo ${i + 1}`, '#4CAF50', miembrosNormales[i], opOpts, e => handleUpdateMiembro(i, e.target.value), isLocked, 'Rango III', 'En Base')}
+                                {renderCard(`Operativo ${i + 1}`, '#4CAF50', miembrosNormales[i], opOpts, e => handleUpdateMiembro(i, e.target.value), isLocked, 'Rango III', 'En Base', deshabilitar)}
                             </div>
                         );
                     })}
@@ -246,19 +269,22 @@ export default function Escuadrones() {
                                         🏳️ {faccion}
                                     </h3>
                                     
-                                    <button 
-                                        className="btn-reclutar-mini" 
-                                        style={{ backgroundColor: '#FF9800', color: '#111' }}
-                                        onClick={(e) => { 
-                                            e.stopPropagation();
-                                            setEscuadronAEditar({ faccion: faccion === 'Sin Afiliación' ? '' : faccion }); 
-                                            setIsModalOpen(true); 
-                                        }}
-                                        title={`Formar escuadrón para ${faccion}`}
-                                    >
-                                        <span className="icono" style={{ color: '#111' }}>+</span>
-                                        <span className="texto" style={{ color: '#111' }}>Formar</span>
-                                    </button>
+                                    {/* OCULTAR EL BOTON DE FORMAR SI LA FACCION NO ES TUYA */}
+                                    {puedeEditarEscuadron(faccion) && (
+                                        <button 
+                                            className="btn-reclutar-mini" 
+                                            style={{ backgroundColor: '#FF9800', color: '#111' }}
+                                            onClick={(e) => { 
+                                                e.stopPropagation();
+                                                setEscuadronAEditar({ faccion: faccion === 'Sin Afiliación' ? '' : faccion }); 
+                                                setIsModalOpen(true); 
+                                            }}
+                                            title={`Formar escuadrón para ${faccion}`}
+                                        >
+                                            <span className="icono" style={{ color: '#111' }}>+</span>
+                                            <span className="texto" style={{ color: '#111' }}>Formar</span>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             
@@ -287,14 +313,17 @@ export default function Escuadrones() {
                         </div>
                     ))}
 
-                    <button 
-                        style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', border: '1px dashed #3f3f5a', color: '#8892b0', borderRadius: '6px', cursor: 'pointer', transition: '0.2s' }}
-                        onClick={() => { setEscuadronAEditar(null); setIsModalOpen(true); }}
-                        onMouseOver={e => e.target.style.backgroundColor = '#1a2235'}
-                        onMouseOut={e => e.target.style.backgroundColor = 'transparent'}
-                    >
-                        + Nueva Facción / Independiente
-                    </button>
+                    {/* BOTÓN INFERIOR DE NUEVO ESCUADRÓN/FACCIÓN (Oculto a invitados) */}
+                    {!esInvitado && (
+                        <button 
+                            style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', border: '1px dashed #3f3f5a', color: '#8892b0', borderRadius: '6px', cursor: 'pointer', transition: '0.2s' }}
+                            onClick={() => { setEscuadronAEditar(null); setIsModalOpen(true); }}
+                            onMouseOver={e => e.target.style.backgroundColor = '#1a2235'}
+                            onMouseOut={e => e.target.style.backgroundColor = 'transparent'}
+                        >
+                            {esGM ? '+ Nueva Facción / Independiente' : '+ Crear Nuevo Batallón'}
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ flex: 1 }}>
@@ -364,12 +393,16 @@ export default function Escuadrones() {
                                 <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px' }}>
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }} onClick={() => setEscuadronId(null)}>⬅ Volver</button>
                                     
-                                    <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
-                                        localStorage.setItem('armeria_target_escuadron', escuadronActual.id);
-                                        window.dispatchEvent(new Event('salto_armeria'));
-                                    }}>🔫 Equipar</button>
-                                    
-                                    <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => { setEscuadronAEditar(escuadronActual); setIsModalOpen(true); }}>⚙️ Ajustes</button>
+                                    {/* LOS BOTONES DE AJUSTES Y EQUIPAR SOLO LOS VE EL DUEÑO O EL GM */}
+                                    {permisoSobreActual && (
+                                        <>
+                                            <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
+                                                localStorage.setItem('armeria_target_escuadron', escuadronActual.id); // Bug corregido: era escuadronActual.id, no soldadoSeleccionado.id
+                                                window.dispatchEvent(new Event('salto_armeria'));
+                                            }}>🔫 Equipar</button>
+                                            <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => { setEscuadronAEditar(escuadronActual); setIsModalOpen(true); }}>⚙️ Ajustes</button>
+                                        </>
+                                    )}
                                 </div>
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>

@@ -5,9 +5,11 @@ import { useData } from '../context/DataContext';
 import { calcularTREscuadron } from './Escuadrones'; 
 
 export default function ModalDesplegar({ isOpen, onClose, mision }) {
-    const { escuadrones, soldados, vehiculos, equipo, recargarTodo } = useData();
+    const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
     const [selectedIds, setSelectedIds] = useState([]);
     const [initialIds, setInitialIds] = useState([]);
+
+    const esGM = userRole === 'GM';
 
     useEffect(() => {
         if (mision) {
@@ -32,9 +34,6 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
             for (let id of agregados) { await updateDoc(doc(db, "escuadrones", id), { estado: 'Desplegado' }); }
             for (let id of removidos) { await updateDoc(doc(db, "escuadrones", id), { estado: 'En Base' }); }
 
-            // --- EL CAMBIO CLAVE ESTÁ AQUÍ ---
-            // Mantenemos el estado en 'Pendiente' para que el tablero principal 
-            // asuma la fase de "Alistamiento" y te muestre los riesgos antes de despegar.
             await updateDoc(doc(db, "misiones", mision.id), { 
                 estado: 'Pendiente', 
                 escuadrones_id: selectedIds,
@@ -46,10 +45,8 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
         } catch (error) { console.error(error); }
     };
 
-    // --- LÓGICA DE AGRUPACIÓN POR COMANDANTE ---
     const escuadronesAgrupados = escuadrones.reduce((acc, esc) => {
-        const capitan = soldados.find(s => s.id === esc.lider_id);
-        const faccion = capitan?.lider || 'Fuerzas Independientes';
+        const faccion = esc.faccion || 'Sin Afiliación';
         if (!acc[faccion]) acc[faccion] = [];
         acc[faccion].push(esc);
         return acc;
@@ -75,17 +72,22 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
                                         {escuadronesAgrupados[faccion].map(esc => {
                                             const isSelected = selectedIds.includes(esc.id);
                                             const isOcupadoEnOtra = (esc.estado === 'Desplegado' || esc.estado === 'M.I.A.') && !initialIds.includes(esc.id);
+                                            
+                                            // --- CÁLCULO DE PERMISOS: Solo GM o el dueño pueden asignar la tropa ---
+                                            const esMio = esGM || faccion === userRole;
+                                            const disabledGeneral = isOcupadoEnOtra || !esMio;
+                                            
                                             const trCalculado = calcularTREscuadron(esc, soldados, vehiculos, equipo);
 
                                             return (
-                                                <label key={esc.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: isOcupadoEnOtra ? '#111' : '#1a2235', border: `1px solid ${isSelected ? '#9C27B0' : '#3f3f5a'}`, borderRadius: '6px', cursor: isOcupadoEnOtra ? 'not-allowed' : 'pointer', opacity: isOcupadoEnOtra ? 0.5 : 1 }}>
-                                                    <input type="checkbox" value={esc.id} checked={isSelected} disabled={isOcupadoEnOtra} onChange={() => handleToggle(esc.id)} />
+                                                <label key={esc.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: disabledGeneral ? '#111' : '#1a2235', border: `1px solid ${isSelected ? '#9C27B0' : '#3f3f5a'}`, borderRadius: '6px', cursor: disabledGeneral ? 'not-allowed' : 'pointer', opacity: disabledGeneral ? 0.5 : 1 }}>
+                                                    <input type="checkbox" value={esc.id} checked={isSelected} disabled={disabledGeneral} onChange={() => handleToggle(esc.id)} />
                                                     <div style={{ flex: 1 }}>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             <h4 style={{ margin: 0, color: isOcupadoEnOtra ? '#666' : (isSelected ? '#9C27B0' : '#FF9800') }}>{esc.nombre}</h4>
                                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#00BCD4' }}>TR: {trCalculado.toFixed(1)}</span>
                                                         </div>
-                                                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>{isOcupadoEnOtra ? `[Ocupado]` : 'Disponible'}</span>
+                                                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>{!esMio ? `[Comandante Externo]` : (isOcupadoEnOtra ? `[Ocupado]` : 'Disponible')}</span>
                                                     </div>
                                                 </label>
                                             );

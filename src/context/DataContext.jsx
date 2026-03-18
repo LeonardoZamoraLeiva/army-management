@@ -1,25 +1,29 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { db, auth } from '../firebase';
 
-// Creamos el contexto
 const DataContext = createContext();
 
-// Un "gancho" (hook) personalizado para usar los datos fácilmente
 export const useData = () => useContext(DataContext);
 
-export const DataProvider = ({ children }) => {
-    // Aquí guardamos el estado de toda la app
-    const [data, setData] = useState({
-        soldados: [],
-        escuadrones: [],
-        misiones: [],
-        equipo: [],
-        vehiculos: []
-    });
-    const [loading, setLoading] = useState(true);
+const ROLE_MAP = {
+    'leo.zamoraleiva@gmail.com': 'GM',
+    'carlo.pipe@gmail.com': 'Lucian',
+    'brick@hunter.com': 'Brick',
+    'cazador@hunter.com': 'Cazador',
+    'william@hunter.com': 'William',
+    'h@hunter.com': 'H'
+};
 
-    // La misma función unificada que diseñamos antes
+export const DataProvider = ({ children }) => {
+    const [data, setData] = useState({ soldados: [], escuadrones: [], misiones: [], equipo: [], vehiculos: [] });
+    const [loading, setLoading] = useState(true);
+    
+    const [user, setUser] = useState(null);
+    const [userRole, setUserRole] = useState(null); 
+    const [authLoading, setAuthLoading] = useState(true);
+
     const cargarTodo = async () => {
         setLoading(true);
         try {
@@ -38,21 +42,32 @@ export const DataProvider = ({ children }) => {
                 equipo: eq_snap.docs.map(d => ({ id: d.id, ...d.data() })),
                 vehiculos: v_snap.docs.map(d => ({ id: d.id, ...d.data() }))
             });
-        } catch (error) {
-            console.error("Error de enlace con Firebase:", error);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error("Error de enlace con Firebase:", error); } 
+        finally { setLoading(false); }
     };
 
-    // Esto le dice a React que ejecute cargarTodo() una sola vez cuando la app arranca
-    useEffect(() => {
-        cargarTodo();
-    }, []);
+useEffect(() => {
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          if (currentUser) {
+              const rol = ROLE_MAP[currentUser.email] || 'Espectador';
+              setUserRole(rol);
+          } else {
+              setUserRole(null);
+          }
+          // AHORA CARGAMOS LA DATA SIEMPRE, INCLUSO COMO INVITADO
+          cargarTodo();
+          setAuthLoading(false);
+      });
+      return () => unsubscribe();
+  }, []);
 
-    // Proveemos los datos y la función de recarga a toda la aplicación
+    const logout = async () => {
+        await signOut(auth);
+    };
+
     return (
-        <DataContext.Provider value={{ ...data, loading, recargarTodo: cargarTodo }}>
+        <DataContext.Provider value={{ ...data, loading, authLoading, user, userRole, logout, recargarTodo: cargarTodo }}>
             {children}
         </DataContext.Provider>
     );

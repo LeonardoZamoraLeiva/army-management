@@ -5,7 +5,9 @@ import { useData } from '../context/DataContext';
 import { getRangoEscuadron } from './Escuadrones';
 
 export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
-    const { escuadrones, soldados, vehiculos, recargarTodo } = useData();
+    const { escuadrones, soldados, vehiculos, recargarTodo, userRole } = useData();
+    const esGM = userRole === 'GM';
+
     const estadoInicial = {
         nombre: '', faccion: '', lema: '', logo: '',
         tipo: 'Asalto', lider_id: '', miembros: [],
@@ -15,9 +17,13 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
     const [formData, setFormData] = useState(estadoInicial);
 
     useEffect(() => {
-        if (escuadronData) setFormData({ ...estadoInicial, ...escuadronData });
-        else setFormData(estadoInicial);
-    }, [escuadronData, isOpen]);
+        if (escuadronData) {
+            setFormData({ ...estadoInicial, ...escuadronData });
+        } else {
+            // Si es un escuadrón nuevo y no eres GM, se te asigna automáticamente a tu facción
+            setFormData({ ...estadoInicial, faccion: esGM ? '' : (userRole || '') });
+        }
+    }, [escuadronData, isOpen, esGM, userRole]);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -103,6 +109,9 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
     const vehiculosDisponibles = vehiculos.filter(v => v.categoria !== 'Droide' && !assignedVehicles.has(String(v.id)));
     const droidesDisponibles = vehiculos.filter(v => v.categoria === 'Droide' && !assignedDroids.has(String(v.id)));
 
+    // Estilo para campos bloqueados
+    const estiloLock = !esGM ? { backgroundColor: '#1a1a1a', opacity: 0.7, cursor: 'not-allowed' } : {};
+
     return (
         <div className="modal" style={{ display: 'flex' }}>
             <div className="contenido-modal" style={{ borderTop: '4px solid #FF9800', width: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -115,12 +124,25 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                         <div className="grupo-input"><label>Nombre (Ej: Alpha-1)</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
                         
-                        {/* SELECTOR DE FACCIÓN AUTOMATIZADO */}
+                        {/* SELECTOR DE FACCIÓN BLOQUEADO PARA COMANDANTES */}
                         <div className="grupo-input">
                             <label>Facción Titular</label>
-                            <select name="faccion" value={formData.faccion} onChange={handleChange} required>
-                                <option value="">-- Seleccionar --</option>
-                                {faccionesUnicas.map(f => <option key={f} value={f}>{f}</option>)}
+                            <select 
+                                name="faccion" 
+                                value={formData.faccion} 
+                                onChange={handleChange} 
+                                required 
+                                disabled={!esGM} 
+                                style={estiloLock}
+                            >
+                                {esGM ? (
+                                    <>
+                                        <option value="">-- Seleccionar --</option>
+                                        {faccionesUnicas.map(f => <option key={f} value={f}>{f}</option>)}
+                                    </>
+                                ) : (
+                                    <option value={userRole}>{userRole}</option>
+                                )}
                             </select>
                         </div>
 
@@ -188,7 +210,8 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                         </div>
                     </div>
 
-                    {escuadronData && (
+                    {/* PANEL DE CONTROL OCULTO PARA COMANDANTES */}
+                    {esGM && escuadronData && (
                         <div style={{ backgroundColor: '#323245', padding: '15px', borderRadius: '5px', borderLeft: '3px solid #F44336', marginTop: '15px' }}>
                             <h4 style={{ margin: '0 0 10px 0', color: '#fff' }}>Panel de Control GM (Privado)</h4>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>

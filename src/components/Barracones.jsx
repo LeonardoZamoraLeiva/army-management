@@ -49,11 +49,6 @@ const inyectarBatallon = async () => {
     }
 };
 
-
-
-
-
-
 const TABLA_XP_DND = [
     0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 
     85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000
@@ -72,10 +67,20 @@ export const obtenerConfigSalud = (estado) => {
 };
 
 export default function Barracones() {
-    const { soldados, escuadrones, equipo, recargarTodo } = useData();
+    // AÑADIDO: Extraemos el rol del usuario (userRole)
+    const { soldados, escuadrones, equipo, recargarTodo, userRole } = useData();
     const [soldadoSeleccionado, setSoldadoSeleccionado] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [soldadoParaEditar, setSoldadoParaEditar] = useState(null);
+
+    // --- VARIABLES DE SEGURIDAD Y PERMISOS ---
+    const esGM = userRole === 'GM';
+    const esInvitado = !userRole || userRole === 'Espectador';
+    const puedeEditar = (soldado) => {
+        if (esGM) return true;
+        if (esInvitado) return false;
+        return soldado?.lider === userRole;
+    };
 
     // Estados para Drag & Drop y Línea Indicadora
     const [draggedItem, setDraggedItem] = useState(null);
@@ -122,7 +127,6 @@ const calibrarPrestigioVeteranos = async () => {
 };
 
     // 2. VIGILANTE DE ACTUALIZACIÓN AUTOMÁTICA
-    // Si editas al soldado en el modal, esto refresca la tarjeta apenas Firebase guarde los datos.
     useEffect(() => {
         if (soldadoSeleccionado) {
             const soldadoActualizado = soldados.find(s => s.id === soldadoSeleccionado.id);
@@ -179,8 +183,12 @@ const calibrarPrestigioVeteranos = async () => {
         porLider[faccion].sort((a, b) => (a.orden || 0) - (b.orden || 0));
     });
 
-    // --- LÓGICA DE DRAG & DROP CON INDICADOR ---
+    // --- LÓGICA DE DRAG & DROP PROTEGIDA ---
     const handleDragStart = (e, soldado) => {
+        if (!puedeEditar(soldado)) {
+            e.preventDefault();
+            return;
+        }
         setDraggedItem(soldado);
         e.dataTransfer.effectAllowed = "move";
     };
@@ -220,6 +228,12 @@ const calibrarPrestigioVeteranos = async () => {
                 await updateDoc(doc(db, "soldados", draggedItem.id), { orden: nuevoOrden });
             } 
             else if (targetFaccion && draggedItem.lider !== targetFaccion) {
+                // AÑADIDO: Bloqueo de transferencia si no es GM
+                if (!esGM) {
+                    alert("Seguridad: Solo el Alto Mando (GM) puede transferir tropas entre facciones.");
+                    setDraggedItem(null);
+                    return;
+                }
                 await updateDoc(doc(db, "soldados", draggedItem.id), { lider: targetFaccion, orden: porLider[targetFaccion]?.length || 0 });
             }
             await recargarTodo();
@@ -251,7 +265,6 @@ const calibrarPrestigioVeteranos = async () => {
         xpParaSiguiente = nivelActual < 20 ? TABLA_XP_DND[nivelActual + 1] : "Max";
         porcentajeXP = nivelActual < 20 ? Math.min(100, Math.max(0, ((xpActual - TABLA_XP_DND[nivelActual]) / (xpParaSiguiente - TABLA_XP_DND[nivelActual])) * 100)) : 100;
 
-// --- LÓGICA BUG-PROOF PARA ASIGNACIÓN ---
         const escAlQuePertenece = escuadrones.find(e => e.lider_id === soldadoSeleccionado.id || (e.miembros && e.miembros.includes(soldadoSeleccionado.id)));
         
         if (escAlQuePertenece) {
@@ -309,10 +322,14 @@ const calibrarPrestigioVeteranos = async () => {
                                             </h3>
                                             <span className="contador-tropas" style={{ backgroundColor: '#555', padding: '2px 8px' }}>{tropas.length}</span>
                                         </div>
-                                        <button className="btn-reclutar-mini" onClick={(e) => { e.stopPropagation(); abrirModalNuevo(faccion); }}>
-                                            <span className="icono">+</span>
-                                            <span className="texto">Reclutar</span>
-                                        </button>
+                                        
+                                        {/* AÑADIDO: Oculta el botón Reclutar a menos que sea GM o tu facción */}
+                                        {(esGM || userRole === faccion) && (
+                                            <button className="btn-reclutar-mini" onClick={(e) => { e.stopPropagation(); abrirModalNuevo(faccion); }}>
+                                                <span className="icono">+</span>
+                                                <span className="texto">Reclutar</span>
+                                            </button>
+                                        )}
                                     </div>
                                     
                                     {!estaColapsado && (
@@ -325,8 +342,6 @@ const calibrarPrestigioVeteranos = async () => {
                                             <div id={`grid-${faccion}`} className="grid-tropas" onScroll={(e) => actualizarFlechas(e.target)}>
                                                 {tropas.map(s => {
                                                     const esSeleccionado = soldadoSeleccionado?.id === s.id;
-                                                    
-                                                    // Usamos el diccionario médico para el puntito (chapa)
                                                     const configS = obtenerConfigSalud(s.estado_salud);
                                                     
                                                     let dragClass = '';
@@ -337,7 +352,7 @@ const calibrarPrestigioVeteranos = async () => {
                                                     return (
                                                         <div 
                                                             key={s.id} 
-                                                            draggable="true"
+                                                            draggable={puedeEditar(s)} // AÑADIDO: Control de arrastre
                                                             onDragStart={(e) => handleDragStart(e, s)}
                                                             onDragOver={(e) => handleDragOverItem(e, s)}
                                                             onDragLeave={() => setDragTargetId(null)}
@@ -346,10 +361,7 @@ const calibrarPrestigioVeteranos = async () => {
                                                             onClick={() => setSoldadoSeleccionado(s)}
                                                         >
                                                             <span className="chapa-nivel">Lvl {s.nivel || 1}</span>
-                                                            
-                                                            {/* EL PUNTITO SINCRONIZADO */}
                                                             <div className="chapa-estado" style={{ backgroundColor: configS.color }} title={configS.texto}></div>
-                                                            
                                                             <img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} className="chapa-foto" alt="perfil" style={{ borderColor: esSeleccionado ? '#4CAF50' : '#555' }} />
                                                             <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: esSeleccionado ? '#4CAF50' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.nombre}</h4>
                                                             <p style={{ margin: 0, fontSize: '0.7rem', color: '#888' }}>{s.clase}</p>
@@ -450,13 +462,17 @@ const calibrarPrestigioVeteranos = async () => {
                             <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px', zIndex: 10 }}>
                                 <button className="btn-accion pequeno" style={{ backgroundColor: '#333' }} onClick={() => setSoldadoSeleccionado(null)}>⬅ Volver</button>
                                 
-                                {/* BOTÓN DE ATAJO A LA ARMERÍA */}
-                                <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
-                                    localStorage.setItem('armeria_target_soldado', soldadoSeleccionado.id);
-                                    window.dispatchEvent(new Event('salto_armeria'));
-                                }}>🔫 Equipar</button>
+                                {/* AÑADIDO: Oculta estos dos botones si no eres dueño ni GM */}
+                                {puedeEditar(soldadoSeleccionado) && (
+                                    <>
+                                        <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
+                                            localStorage.setItem('armeria_target_soldado', soldadoSeleccionado.id);
+                                            window.dispatchEvent(new Event('salto_armeria'));
+                                        }}>🔫 Equipar</button>
 
-                                <button className="btn-accion pequeno" style={{ backgroundColor: '#555' }} onClick={abrirModalEditar}>⚙️ Editar</button>
+                                        <button className="btn-accion pequeno" style={{ backgroundColor: '#555' }} onClick={abrirModalEditar}>⚙️ Editar</button>
+                                    </>
+                                )}
                             </div>
                             
                             <div className="cabecera-tarjeta" style={{ borderBottom: 'none', paddingBottom: '0', marginBottom: '0' }}>
@@ -561,11 +577,11 @@ const calibrarPrestigioVeteranos = async () => {
                     )}
                 </div>
             </div>
-<button onClick={inyectarBatallon} style={{ backgroundColor: '#F44336', color: 'white', padding: '5px 10px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>
+{/* <button onClick={inyectarBatallon} style={{ backgroundColor: '#F44336', color: 'white', padding: '5px 10px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>
     ⚠️ DEV: Inyectar 20 Soldados
 </button>
 
-<button onClick={calibrarPrestigioVeteranos}>Calibrar Veteranos</button>
+<button onClick={calibrarPrestigioVeteranos}>Calibrar Veteranos</button> */}
 
             <ModalSoldado isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} soldadoData={soldadoParaEditar} onDelete={() => { setSoldadoSeleccionado(null); setIsModalOpen(false); }} />
         </div>
