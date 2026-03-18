@@ -10,10 +10,10 @@ export const useData = () => useContext(DataContext);
 const ROLE_MAP = {
     'leo.zamoraleiva@gmail.com': 'GM',
     'carlo.pipe@gmail.com': 'Lucian',
-    'brick@hunter.com': 'Brick',
+    'rotorresag@gmail.com': 'Brick',
     'cazador@hunter.com': 'Cazador',
-    'william@hunter.com': 'William',
-    'h@hunter.com': 'H'
+    'kevin.ugalde.g@gmail.com': 'William',
+    'pelonche@hunter.com': 'H'
 };
 
 export const DataProvider = ({ children }) => {
