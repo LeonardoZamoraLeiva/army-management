@@ -7,7 +7,7 @@ import ModalDesplegar from './ModalDesplegar';
 import ModalAAR from './ModalAAR';
 import { getMoralData, calcularTREscuadron } from './Escuadrones'; 
 
-const MS_POR_DIA = 60000; // 1 min real = 1 día de juego
+const MS_POR_DIA = 86400000; // 24 horas reales = 1 día de juego
 
 const RISK_TABLE = {
     'E': { inj: 5, dea: 0 }, 'D': { inj: 10, dea: 1 }, 'C': { inj: 20, dea: 3 }, 'B': { inj: 35, dea: 8 },
