@@ -476,9 +476,8 @@ export default function Misiones() {
                                                     <p style={{ margin: '0 0 5px 0' }}>🎯 TR Fuerza: <b style={{color: '#00BCD4'}}>{crFuerzaTotal.toFixed(1)}</b> vs CR Objetivo: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
                                                     <p style={{ margin: '0 0 5px 0' }}>🎲 Prob. Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{probExito}%</b></p>
                                                     <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>
-                                                    🩸 Riesgo Estimado: {riesgoWinVisual}% (Éxito) | {riesgoFailVisual}% (Fracaso)
+                                                        🩸 Riesgo Base: {DANGER_TABLE[m.peligrosidad || 'Media'].win.hit_chance}% (Éxito) | {DANGER_TABLE[m.peligrosidad || 'Media'].fail.hit_chance}% (Fracaso)
                                                     </p>
-
                                                 </div>
                                             </>
                                         ) : (
