@@ -300,8 +300,8 @@ const calibrarPrestigioVeteranos = async () => {
             <div id="dashboard-barracones" style={{ display: 'flex', gap: '20px' }}>
                 
                 {/* COLUMNA IZQUIERDA: Grid y Drag&Drop */}
-                <div id="columna-lista" style={{ flex: 1.2, backgroundColor: 'transparent', height: 'fit-content' }}>
-                    <div className="contenedor-lideres">
+                    <div id="columna-lista" style={{ flex: 1.2, minWidth: 0, backgroundColor: 'transparent', height: 'fit-content' }}>
+                        <div className="contenedor-lideres">
                         {Object.entries(porLider).map(([faccion, tropas]) => {
                             const estaColapsado = faccionesColapsadas[faccion];
 
@@ -333,13 +333,22 @@ const calibrarPrestigioVeteranos = async () => {
                                     </div>
                                     
                                     {!estaColapsado && (
-                                        <div 
-                                            className="contenedor-carrusel"
-                                            onMouseEnter={(e) => actualizarFlechas(e.currentTarget.querySelector('.grid-tropas'))}
-                                        >
-                                            <button className="btn-scroll izq" onClick={(e) => { e.preventDefault(); document.getElementById(`grid-${faccion}`).scrollBy({ left: -200, behavior: 'smooth' }); }}>◀</button>
+                                            <div 
+                                                className="contenedor-carrusel"
+                                                onMouseEnter={(e) => actualizarFlechas(e.currentTarget.querySelector('.grid-tropas'))}
+                                                style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', marginTop: '10px' }}
+                                            >
+                                            <button 
+                                                    className="btn-scroll izq" 
+                                                    style={{ position: 'absolute', left: '-15px', zIndex: 10, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.5)' }}
+                                                    onClick={(e) => { e.preventDefault(); document.getElementById(`grid-${faccion}`).scrollBy({ left: -200, behavior: 'smooth' }); }}
+                                                >◀</button>
 
-                                            <div id={`grid-${faccion}`} className="grid-tropas" onScroll={(e) => actualizarFlechas(e.target)}>
+                                            <div id={`grid-${faccion}`} 
+                                                className="grid-tropas" 
+                                                onScroll={(e) => actualizarFlechas(e.target)}
+                                                    style={{ display: 'flex', gap: '10px', overflowX: 'auto', scrollBehavior: 'smooth', width: '100%', padding: '15px 5px 5px 30px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                                                    <style>{`.grid-tropas::-webkit-scrollbar { display: none; }`}</style>
                                                 {tropas.map(s => {
                                                     const esSeleccionado = soldadoSeleccionado?.id === s.id;
                                                     const configS = obtenerConfigSalud(s.estado_salud);
@@ -359,6 +368,7 @@ const calibrarPrestigioVeteranos = async () => {
                                                             onDrop={(e) => handleDrop(e, s, faccion)}
                                                             className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} 
                                                             onClick={() => setSoldadoSeleccionado(s)}
+
                                                         >
                                                             <span className="chapa-nivel">Lvl {s.nivel || 1}</span>
                                                             <div className="chapa-estado" style={{ backgroundColor: configS.color }} title={configS.texto}></div>

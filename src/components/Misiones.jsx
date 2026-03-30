@@ -7,11 +7,28 @@ import ModalDesplegar from './ModalDesplegar';
 import ModalAAR from './ModalAAR';
 import { getMoralData, calcularTREscuadron } from './Escuadrones'; 
 
-const MS_POR_DIA = 60000; // 1 min real = 1 día de juego
+const MS_POR_DIA = 86400000; 
 
-const RISK_TABLE = {
-    'E': { inj: 5, dea: 0 }, 'D': { inj: 10, dea: 1 }, 'C': { inj: 20, dea: 3 }, 'B': { inj: 35, dea: 8 },
-    'A': { inj: 55, dea: 15 }, 'S': { inj: 80, dea: 30 }, 'SS': { inj: 95, dea: 50 }
+// EL NUEVO SISTEMA MÉDICO (Basado en la Peligrosidad)
+// win: Probabilidad de sufrir heridas si ganas (Nunca mueren)
+// fail: Probabilidad de sufrir la primera herida si fallas, y cascada de gravedad
+const DANGER_TABLE = {
+    'Baja': {
+        win: { hit_chance: 5 }, 
+        fail: { hit_chance: 30, cascada: [0.30, 0.10, 0.00, 0.00] } // 30% a Moderada, 10% a Grave, 0% a Muerte
+    },
+    'Media': {
+        win: { hit_chance: 15 }, 
+        fail: { hit_chance: 60, cascada: [0.60, 0.40, 0.10, 0.05] } 
+    },
+    'Alta': {
+        win: { hit_chance: 30 }, 
+        fail: { hit_chance: 85, cascada: [0.80, 0.60, 0.40, 0.20] } 
+    },
+    'Extrema': {
+        win: { hit_chance: 40 }, 
+        fail: { hit_chance: 100, cascada: [0.90, 0.80, 0.60, 0.35] } // En fallo total, 35% de los gravísimos mueren.
+    }
 };
 
 const TABLA_XP_DND = [
@@ -27,11 +44,10 @@ const formatoTiempo = (ms) => {
     return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 };
 
-// --- PLANTILLAS RESTAURADAS ---
 const PLANTILLAS = [
-    { titulo: "Purga de Nido", lugar: "Mandalore", descripcion: "Un informante tiene códigos críticos.", rango: "B", cr_req: 8, tiempo_viaje: 3, tiempo_ejecucion: 2, recompensa: "1500 CR", xp: 0 },
-    { titulo: "Infiltración", lugar: "Tatooine", descripcion: "Se detectó una anomalía biológica en el sector.", rango: "D", cr_req: 3, tiempo_viaje: 2, tiempo_ejecucion: 1, recompensa: "500 CR", xp: 0 },
-    { titulo: "Recuperación de datos", lugar: "Ryloth", descripcion: "Fuerzas hostiles han fortificado la zona.", rango: "C", cr_req: 5, tiempo_viaje: 4, tiempo_ejecucion: 3, recompensa: "800 CR", xp: 0 }
+    { titulo: "Purga de Nido", lugar: "Mandalore", descripcion: "Un informante tiene códigos críticos.", rango: "B", peligrosidad: "Alta", cr_req: 8, tiempo_viaje: 3, tiempo_ejecucion: 2, recompensa: "1500 CR", xp: 0 },
+    { titulo: "Infiltración", lugar: "Tatooine", descripcion: "Se detectó una anomalía biológica en el sector.", rango: "D", peligrosidad: "Media", cr_req: 3, tiempo_viaje: 2, tiempo_ejecucion: 1, recompensa: "500 CR", xp: 0 },
+    { titulo: "Recuperación de datos", lugar: "Ryloth", descripcion: "Fuerzas hostiles han fortificado la zona.", rango: "C", peligrosidad: "Baja", cr_req: 5, tiempo_viaje: 4, tiempo_ejecucion: 3, recompensa: "800 CR", xp: 0 }
 ];
 
 export default function Misiones() {
@@ -45,7 +61,6 @@ export default function Misiones() {
     const [reporteAAR, setReporteAAR] = useState(null);
     const [horaActual, setHoraActual] = useState(Date.now()); 
 
-    // --- SEGURIDAD ---
     const esGM = userRole === 'GM';
     const esInvitado = !userRole || userRole === 'Espectador';
 
@@ -68,7 +83,6 @@ export default function Misiones() {
         return () => clearInterval(timer);
     }, []);
 
-    // --- FUNCIÓN AUTO-GENERAR RESTAURADA ---
     const generarMisionAleatoria = async () => {
         const template = PLANTILLAS[Math.floor(Math.random() * PLANTILLAS.length)];
         const horasAleatorias = Math.floor(Math.random() * 60) + 12; 
@@ -142,9 +156,14 @@ export default function Misiones() {
         const asignados = mision.escuadrones_id || [];
         if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
+        // ¿GANAN O PIERDEN LA MISIÓN?
         const exito = (Math.random() * 100) <= probExitoReal; 
-        const resultadoTexto = exito ? `Contrato cumplido con éxito. Recompensa asegurada.` : `Objetivo fallido. Las fuerzas se retiraron con fuertes penalizaciones.`;
+        const resultadoTexto = exito ? `Contrato cumplido con éxito. Extracción limpia asegurada.` : `Objetivo fallido. Fuerte resistencia enemiga. Las fuerzas se retiraron bajo fuego.`;
         
+        // RECUPERAMOS EL NIVEL DE PELIGROSIDAD
+        const pLevel = mision.peligrosidad || 'Media';
+        const dangerStats = DANGER_TABLE[pLevel];
+
         const valoresRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 };
         const valorRango = valoresRango[mision.rango] || 3; 
         let puntosPrestigioDelta = exito ? (2 + Math.round((100 - probExitoReal) / 10) + valorRango) : (-1 - Math.round(probExitoReal / 10) - (8 - valorRango));
@@ -152,7 +171,6 @@ export default function Misiones() {
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
         const recompensaObtenida = exito ? (mision.recompensa || "Pago Estándar") : "Ninguna";
-        const riskStats = RISK_TABLE[mision.rango] || RISK_TABLE['C'];
 
         let multDif = 1;
         const crTarget = Math.round(crFuerzaTotal);
@@ -162,6 +180,9 @@ export default function Misiones() {
         const multRango = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.5, 'S': 2.0, 'SS': 5.0 }[mision.rango] || 1;
         const xpEscuadronGanada = exito ? Math.round((1 * multDif * multRango) * 10) / 10 : 0;
         
+        // RATIO DE PODER: Modifica la gravedad del daño inicial
+        const poderRatio = Math.max(0.5, crFuerzaTotal / (mision.cr_req || 1));
+
         let reporteBajasGlobal = [];
         let nombresEscuadrones = [];
 
@@ -189,16 +210,59 @@ export default function Misiones() {
 
                 while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) newLevel++;
 
+                // ARMADURAS
+                let prevencionHeridas = 0;
+                if (soldado.equipo) {
+                    Object.values(soldado.equipo).forEach(itemId => {
+                        if(itemId) {
+                            const item = equipo.find(e => String(e.id) === String(itemId));
+                            if (item && item.reduccion_dmg) prevencionHeridas += Number(item.reduccion_dmg);
+                        }
+                    });
+                }
+                
+                // MOTOR DE CASCADA DE DAÑO
                 if (estadoSalud !== 'Muerto') {
-                    if ((Math.random() * 100) < riskStats.dea) {
-                        if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
-                        else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } } 
-                        else { estadoSalud = 'Muerto'; txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); }
-                    } else if (estadoSalud !== 'Gravísima' && (Math.random() * 100) < riskStats.inj) {
-                        const rollSev = Math.random() * 100;
-                        if (rollSev < 50) { estadoSalud = 'Leve'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas leves.`); }
-                        else if (rollSev < 85) { estadoSalud = 'Media'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas moderadas.`); }
-                        else { estadoSalud = 'Grave'; txtLogParts.push(`🩸 ${soldado.nombre} con heridas graves.`); }
+                    // Calculamos si recibe el primer golpe
+                    let baseHitChance = exito ? dangerStats.win.hit_chance : dangerStats.fail.hit_chance;
+                    
+                    // Si fuiste muy fuerte, reduces el primer golpe.
+                    baseHitChance = baseHitChance / poderRatio;
+                    
+                    // La armadura reduce el golpe directo
+                    const multiplicadorDefensa = Math.max(0.1, (100 - prevencionHeridas) / 100); 
+                    const probHeridaReal = baseHitChance * multiplicadorDefensa;
+
+                    if ((Math.random() * 100) < probHeridaReal) {
+                        // Fue alcanzado. Empieza en leve.
+                        estadoSalud = 'Leve';
+                        let gradoDanio = "leves";
+                        
+                        // Si falló la misión, iniciamos la Cascada
+                        if (!exito) {
+                            const casc = dangerStats.fail.cascada;
+                            if (Math.random() < casc[0]) { 
+                                estadoSalud = 'Media'; gradoDanio = "moderadas"; 
+                                if (Math.random() < casc[1]) {
+                                    estadoSalud = 'Grave'; gradoDanio = "graves";
+                                    if (Math.random() < casc[2]) {
+                                        estadoSalud = 'Gravísima'; gradoDanio = "críticas";
+                                        if (Math.random() < casc[3]) {
+                                            // LLEGÓ A LETAL
+                                            if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
+                                            else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; } } 
+                                            else { estadoSalud = 'Muerto'; }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (estadoSalud === 'Muerto') {
+                            txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`);
+                        } else if (txtLogParts.length === 0) {
+                            txtLogParts.push(`🩸 ${soldado.nombre} con heridas ${gradoDanio}.`);
+                        }
                     }
                 }
 
@@ -245,7 +309,6 @@ export default function Misiones() {
             <div className="panel-acciones" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '5px solid #F44336', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#F44336', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Tablero de Contratos</h2>
                 
-                {/* SOLO GM PUEDE CREAR CONTRATOS MANUALES O AUTO-GENERAR */}
                 {esGM && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
@@ -312,6 +375,7 @@ export default function Misiones() {
                             }
                         }
 
+                        // CÁLCULO DE PROBABILIDAD DE ÉXITO (Basado en Rango y TR vs CR)
                         let crFuerzaTotal = 0, probExito = 0;
                         if (!esNueva) {
                             let moralPromedio = 0;
@@ -319,14 +383,35 @@ export default function Misiones() {
                                 crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo);
                                 moralPromedio += getMoralData(esc.moral).mod;
                             });
-                            moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
-                            probExito = Math.min(95, Math.max(5, Math.round((crFuerzaTotal / (m.cr_req || 1)) * 75) + moralPromedio));
+                            
+                            if (escuadronesAsignados.length > 0) {
+                                moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
+                            } else {
+                                moralPromedio = 0;
+                            }
+                            
+                            // Bases y Topes de Éxito según Complejidad (Rango)
+                            const baseProb = { 'E': 95, 'D': 95, 'C': 95, 'B': 90, 'A': 90, 'S': 80, 'SS': 50 }[m.rango] || 80;
+                            const maxProb  = { 'E': 99, 'D': 99, 'C': 95, 'B': 95, 'A': 90, 'S': 85, 'SS': 80 }[m.rango] || 95;
+                            
+                            const ratio_poder = crFuerzaTotal / (m.cr_req || 1);
+                            const modificadorPoder = (ratio_poder - 1) * 35; 
+                                                        
+                            let calculo = baseProb + Math.round(modificadorPoder) + moralPromedio;
+                            probExito = Math.min(maxProb, Math.max(5, calculo));
+
+                            // --- NUEVO CÁLCULO VISUAL DE RIESGO ---
+                            const ratio_seguridad = Math.max(0.5, ratio_poder);
+                            const dangerStats = DANGER_TABLE[m.peligrosidad || 'Media'];
+
+                            // Lo guardamos en constantes locales en vez de m.riesgo...
+                            const riesgoWinVisual = Math.min(100, Math.round(dangerStats.win.hit_chance / ratio_seguridad));
+                            const riesgoFailVisual = Math.min(100, Math.round(dangerStats.fail.hit_chance / ratio_seguridad));
                         }
 
                         return (
                             <div key={m.id} className="tarjeta-escuadron" style={{ position: 'relative', backgroundColor: '#111118', borderTop: `5px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : (faseEstado === 'lista' ? '#9C27B0' : '#00BCD4'))}`, borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 16px rgba(0,0,0,0.3)' }}>
                                 
-                                {/* SOLO GM PUEDE EDITAR Y BORRAR CONTRATOS */}
                                 {esGM && (
                                     <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '5px' }}>
                                         {!estaDesplegada && (
@@ -341,7 +426,7 @@ export default function Misiones() {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                         <span style={{ background: '#FF9800', color: '#111', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>Rango {m.rango}</span>
                                         {m.peligrosidad && (
-                                            <span style={{ color: m.peligrosidad === 'SS' || m.peligrosidad === 'S' ? '#ff1100' : '#FF5722', fontSize: '0.75rem', fontWeight: 'bold', border: `1px solid ${m.peligrosidad === 'SS' || m.peligrosidad === 'S' ? '#ff1100' : '#FF5722'}`, padding: '1px 6px', borderRadius: '4px', backgroundColor: m.peligrosidad === 'SS' ? 'rgba(255,17,0,0.1)' : 'transparent' }}>
+                                            <span style={{ color: m.peligrosidad === 'Extrema' || m.peligrosidad === 'Alta' ? '#ff1100' : '#FF5722', fontSize: '0.75rem', fontWeight: 'bold', border: `1px solid ${m.peligrosidad === 'Extrema' || m.peligrosidad === 'Alta' ? '#ff1100' : '#FF5722'}`, padding: '1px 6px', borderRadius: '4px', backgroundColor: m.peligrosidad === 'Extrema' ? 'rgba(255,17,0,0.1)' : 'transparent' }}>
                                                 ⚠️ {m.peligrosidad}
                                             </span>
                                         )}
@@ -355,7 +440,6 @@ export default function Misiones() {
                                 
                                 <p style={{ color: '#aaa', fontSize: '0.85rem', fontStyle: 'italic', margin: '10px 0' }}>{m.descripcion}</p>
                                 
-                                {/* BLOQUE RESTAURADO: DURACIÓN, XP Y RECOMPENSA */}
                                 <div style={{ borderTop: '1px dashed #3f3f5a', paddingTop: '10px', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>
@@ -366,7 +450,6 @@ export default function Misiones() {
                                     <div style={{ fontSize: '0.8rem', color: '#FFC107' }}>💰 <b>{m.recompensa || 'Por definir'}</b></div>
                                 </div>
 
-                                {/* BARRA DE PROGRESO DE MISIÓN EN CURSO */}
                                 {estaDesplegada && (
                                     <div style={{ backgroundColor: '#000', padding: '10px', borderRadius: '6px', marginBottom: '15px', border: '1px solid #333' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem' }}>
@@ -381,7 +464,6 @@ export default function Misiones() {
                                     </div>
                                 )}
 
-                                {/* BLOQUE CENTRAL: ALISTAMIENTO O SIN ASIGNAR */}
                                 {!estaDesplegada && (
                                     <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: `1px solid ${estaPreparando ? '#FF9800' : '#3f3f5a'}`, marginTop: 'auto' }}>
                                         {estaPreparando ? (
@@ -393,14 +475,19 @@ export default function Misiones() {
                                                 <div style={{ fontSize: '0.9rem', color: '#e0e0e0' }}>
                                                     <p style={{ margin: '0 0 5px 0' }}>🎯 TR Fuerza: <b style={{color: '#00BCD4'}}>{crFuerzaTotal.toFixed(1)}</b> vs CR Objetivo: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
                                                     <p style={{ margin: '0 0 5px 0' }}>🎲 Prob. Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{probExito}%</b></p>
-                                                    <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {RISK_TABLE[m.rango]?.inj || 20}% Heridas | {RISK_TABLE[m.rango]?.dea || 3}% K.I.A.</p>
+                                                    <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>
+                                                    🩸 Riesgo Estimado: {riesgoWinVisual}% (Éxito) | {riesgoFailVisual}% (Fracaso)
+                                                    </p>
+
                                                 </div>
                                             </>
                                         ) : (
                                             <div style={{ textAlign: 'center' }}>
                                                 <p style={{ margin: '0 0 5px 0', color: '#888', fontSize: '0.85rem' }}>Fuerzas sin asignar.</p>
                                                 <p style={{ margin: '0 0 5px 0', color: '#e0e0e0', fontSize: '0.9rem' }}>🎯 Objetivo CR: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
-                                                <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>🩸 Riesgo: {RISK_TABLE[m.rango]?.inj || 20}% Heridas | {RISK_TABLE[m.rango]?.dea || 3}% K.I.A.</p>
+                                                <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>
+                                                    🩸 Riesgo Base: {DANGER_TABLE[m.peligrosidad || 'Media'].win.hit_chance}% (Éxito) | {DANGER_TABLE[m.peligrosidad || 'Media'].fail.hit_chance}% (Fracaso)
+                                                </p>
                                             </div>
                                         )}
                                     </div>
@@ -414,7 +501,6 @@ export default function Misiones() {
                                     </div>
                                 )}
                                 
-                                {/* BOTONERA TÁCTICA (Solo visible para Usuarios Logueados) */}
                                 {!esInvitado && (
                                     <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                                         {esNueva && (
@@ -465,7 +551,7 @@ export default function Misiones() {
             )}
 
             <ModalMision isOpen={isModalMisionOpen} onClose={() => { setIsModalMisionOpen(false); setMisionParaEditar(null); }} misionData={misionParaEditar} />
-            <ModalDesplegar isOpen={isModalDesplegarOpen} onClose={() => setIsModalDesplegarOpen(false)} mision={misionActiva} misiones={misiones} />
+            <ModalDesplegar isOpen={isModalDesplegarOpen} onClose={() => setIsModalDesplegarOpen(false)} mision={misionActiva} />
             <ModalAAR isOpen={!!reporteAAR} onClose={() => setReporteAAR(null)} reporte={reporteAAR} />
         </div>
     );

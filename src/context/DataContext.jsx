@@ -13,7 +13,7 @@ const ROLE_MAP = {
     'rotorresag@gmail.com': 'Brick',
     'cazador@hunter.com': 'Cazador',
     'kevin.ugalde.g@gmail.com': 'William',
-    'pelonche@hunter.com': 'H'
+    'pelonche@hunter.com': 'Pelonche (E-20)'
 };
 
 export const DataProvider = ({ children }) => {

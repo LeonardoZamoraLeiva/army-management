@@ -7,9 +7,10 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
     const { recargarTodo } = useData();
     const esEdicion = misionData && misionData.id;
 
+    // AÑADIDO: Por defecto la peligrosidad será 'Media'
     const estadoInicial = {
-        titulo: '', lugar: '', descripcion: '', rango: 'C', peligrosidad: '',
-        req_especiales: '', recompensas_especiales: '', // NUEVOS CAMPOS
+        titulo: '', lugar: '', descripcion: '', rango: 'C', peligrosidad: 'Media',
+        req_especiales: '', recompensas_especiales: '',
         cr_req: 1, tiempo_viaje: 2, tiempo_ejecucion: 3, recompensa: '', xp: 0,
         horas_limite: 48 
     };
@@ -30,7 +31,6 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
         e.preventDefault();
         try {
             if (esEdicion) {
-                // Actualizamos la misión existente
                 await updateDoc(doc(db, "misiones", misionData.id), {
                     ...formData,
                     cr_req: Number(formData.cr_req),
@@ -39,7 +39,6 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                     xp: Number(formData.xp) || 0
                 });
             } else {
-                // Creamos una nueva
                 const milisegundosLimite = Number(formData.horas_limite) * 60 * 60 * 1000;
                 const expiraEn = Date.now() + milisegundosLimite;
 
@@ -76,19 +75,27 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                     <div className="grupo-input"><label>Descripción del Objetivo:</label><textarea name="descripcion" value={formData.descripcion} onChange={handleChange} rows="2" required></textarea></div>
                     
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        <div className="grupo-input" style={{ flex: 1 }}><label>Rango:</label>
+                        <div className="grupo-input" style={{ flex: 1 }}><label>Dificultad (CR):</label>
                             <select name="rango" value={formData.rango} onChange={handleChange}>
                                 <option>E</option><option>D</option><option>C</option><option>B</option><option>A</option><option>S</option><option>SS</option>
                             </select>
                         </div>
-                        <div className="grupo-input" style={{ flex: 1 }}><label>Peligrosidad:</label><input type="text" name="peligrosidad" value={formData.peligrosidad || ''} onChange={handleChange} placeholder="Ej: Alta" /></div>
+                        
+                        {/* AÑADIDO: Select de Peligrosidad (Consecuencias médicas) */}
+                        <div className="grupo-input" style={{ flex: 1 }}><label>Peligrosidad (Daño):</label>
+                            <select name="peligrosidad" value={formData.peligrosidad} onChange={handleChange}>
+                                <option value="Baja">Baja</option>
+                                <option value="Media">Media</option>
+                                <option value="Alta">Alta</option>
+                                <option value="Extrema">Extrema</option>
+                            </select>
+                        </div>
                         
                         {!esEdicion && (
                             <div className="grupo-input" style={{ flex: 1 }}><label>Validez (Hrs):</label><input type="number" name="horas_limite" value={formData.horas_limite} onChange={handleChange} required min="1" /></div>
                         )}
                     </div>
 
-                    {/* NUEVOS CAMPOS ESPECIALES */}
                     <div style={{ borderLeft: '3px solid #9C27B0', paddingLeft: '10px', marginBottom: '15px' }}>
                         <div className="grupo-input"><label style={{color: '#9C27B0'}}>Requisitos Especiales:</label><input type="text" name="req_especiales" value={formData.req_especiales} onChange={handleChange} placeholder="Ej: Solo usuarios de Nen, Inmunidad al veneno..." /></div>
                         <div className="grupo-input" style={{margin: 0}}><label style={{color: '#FFC107'}}>Recompensas Especiales:</label><input type="text" name="recompensas_especiales" value={formData.recompensas_especiales} onChange={handleChange} placeholder="Ej: Artefacto clase A, Información vital..." /></div>

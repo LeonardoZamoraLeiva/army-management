@@ -68,10 +68,10 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .btn-scroll:hover { background: #4CAF50; color: #111; transform: translateY(-50%) scale(1.15); }
 
 /* Chapas Militares (Efecto Baraja) */
-.chapa-militar { flex: 0 0 100px; background: linear-gradient(145deg, #252533, #1a1a24); border: 1px solid #3f3f5a; border-radius: 6px; padding: 10px 5px; text-align: center; cursor: pointer; transition: all 0.3s ease; position: relative; margin-left: -25px; z-index: 1; box-shadow: -5px 0 10px rgba(0,0,0,0.5); }
+.chapa-militar { flex: 0 0 100px; background: linear-gradient(145deg, #252533, #1a1a24); border: 1px solid #3f3f5a; border-radius: 6px; padding: 10px 5px; text-align: center; cursor: pointer; transition: all 0.3s ease; position: relative; margin-left: -25px; z-index: 1; box-shadow: -5px 0 10px rgba(0,0,0,0.5); flex-shrink: 0; /* EVITA que las tarjetas se compriman intentando caber todas juntas */}
 .chapa-militar:first-child { margin-left: 0; }
 .chapa-militar:hover { transform: translateY(-15px) rotate(-2deg); border-color: #4CAF50; z-index: 10 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.8); }
-.chapa-militar.seleccionada { border-color: #4CAF50; background: linear-gradient(145deg, #2a332a, #1a1a24); transform: translateY(-15px); z-index: 9; }
+.chapa-militar.seleccionada { border-color: #4CAF50; background: linear-gradient(145deg, #2a332a, #1a1a24); transform: translateY(-15px); z-index: 10; }
 .chapa-foto { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; border: 2px solid #555; margin-bottom: 5px; background-color: #111; }
 .chapa-militar h4 { font-size: 0.75rem !important; margin: 0 0 2px 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 .chapa-militar p { font-size: 0.65rem !important; margin: 0; color: #888;}
