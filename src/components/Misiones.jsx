@@ -7,28 +7,15 @@ import ModalDesplegar from './ModalDesplegar';
 import ModalAAR from './ModalAAR';
 import { getMoralData, calcularTREscuadron } from './Escuadrones'; 
 
+import { calcularDistanciaPitagorica } from '../utils/motorEstelar';
+
 const MS_POR_DIA = 86400000; 
 
-// EL NUEVO SISTEMA MÉDICO (Basado en la Peligrosidad)
-// win: Probabilidad de sufrir heridas si ganas (Nunca mueren)
-// fail: Probabilidad de sufrir la primera herida si fallas, y cascada de gravedad
 const DANGER_TABLE = {
-    'Baja': {
-        win: { hit_chance: 5 }, 
-        fail: { hit_chance: 30, cascada: [0.30, 0.10, 0.00, 0.00] } // 30% a Moderada, 10% a Grave, 0% a Muerte
-    },
-    'Media': {
-        win: { hit_chance: 15 }, 
-        fail: { hit_chance: 60, cascada: [0.60, 0.40, 0.10, 0.05] } 
-    },
-    'Alta': {
-        win: { hit_chance: 30 }, 
-        fail: { hit_chance: 85, cascada: [0.80, 0.60, 0.40, 0.20] } 
-    },
-    'Extrema': {
-        win: { hit_chance: 40 }, 
-        fail: { hit_chance: 100, cascada: [0.90, 0.80, 0.60, 0.35] } // En fallo total, 35% de los gravísimos mueren.
-    }
+    'Baja': { win: { hit_chance: 5 }, fail: { hit_chance: 30, cascada: [0.30, 0.10, 0.00, 0.00] } },
+    'Media': { win: { hit_chance: 15 }, fail: { hit_chance: 60, cascada: [0.60, 0.40, 0.10, 0.05] } },
+    'Alta': { win: { hit_chance: 30 }, fail: { hit_chance: 85, cascada: [0.80, 0.60, 0.40, 0.20] } },
+    'Extrema': { win: { hit_chance: 40 }, fail: { hit_chance: 100, cascada: [0.90, 0.80, 0.60, 0.35] } }
 };
 
 const TABLA_XP_DND = [
@@ -44,6 +31,24 @@ const formatoTiempo = (ms) => {
     return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 };
 
+const calcularPosicionEnRuta = (esc, ahora) => {
+    if (!esc.ruta_visual || esc.ruta_visual.length === 0) return null;
+    if (ahora >= esc.fecha_llegada) return [esc.ruta_visual[esc.ruta_visual.length - 1].y, esc.ruta_visual[esc.ruta_visual.length - 1].x];
+    const progreso = Math.max(0, (ahora - esc.fecha_salida) / (esc.fecha_llegada - esc.fecha_salida));
+    let distTotal = 0; const dists = [];
+    for (let i = 0; i < esc.ruta_visual.length - 1; i++) {
+        const p1 = esc.ruta_visual[i], p2 = esc.ruta_visual[i+1];
+        const d = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        distTotal += d; dists.push(d);
+    }
+    let distObjetivo = distTotal * progreso, segmento = 0;
+    while (segmento < dists.length && distObjetivo > dists[segmento]) { distObjetivo -= dists[segmento]; segmento++; }
+    if (segmento >= dists.length) segmento = dists.length - 1;
+    const p1 = esc.ruta_visual[segmento], p2 = esc.ruta_visual[segmento + 1] || p1;
+    const fraccion = dists[segmento] > 0 ? distObjetivo / dists[segmento] : 0;
+    return [p1.y + (p2.y - p1.y) * fraccion, p1.x + (p2.x - p1.x) * fraccion];
+};
+
 const PLANTILLAS = [
     { titulo: "Purga de Nido", lugar: "Mandalore", descripcion: "Un informante tiene códigos críticos.", rango: "B", peligrosidad: "Alta", cr_req: 8, tiempo_viaje: 3, tiempo_ejecucion: 2, recompensa: "1500 CR", xp: 0 },
     { titulo: "Infiltración", lugar: "Tatooine", descripcion: "Se detectó una anomalía biológica en el sector.", rango: "D", peligrosidad: "Media", cr_req: 3, tiempo_viaje: 2, tiempo_ejecucion: 1, recompensa: "500 CR", xp: 0 },
@@ -51,7 +56,7 @@ const PLANTILLAS = [
 ];
 
 export default function Misiones() {
-    const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
+    const { escuadrones, soldados, vehiculos, equipo, planetas, recargarTodo, userRole } = useData();
     const [misiones, setMisiones] = useState([]);
     
     const [isModalMisionOpen, setIsModalMisionOpen] = useState(false);
@@ -61,19 +66,17 @@ export default function Misiones() {
     const [reporteAAR, setReporteAAR] = useState(null);
     const [horaActual, setHoraActual] = useState(Date.now()); 
 
+    const [alertaAborto, setAlertaAborto] = useState(null);
+    const [confirmacionDespliegue, setConfirmacionDespliegue] = useState(null);
+
     const esGM = userRole === 'GM';
     const esInvitado = !userRole || userRole === 'Espectador';
 
     useEffect(() => {
-        const unsubscribe = onSnapshot(
-            collection(db, "misiones"), 
-            (snapshot) => {
+        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 setMisiones(data.filter(m => m.estado !== 'Archivada')); 
-            },
-            (error) => {
-                console.warn("Acceso denegado o conexión pausada:", error.message);
-            }
+            }, (error) => { console.warn("Acceso denegado o conexión pausada:", error.message); }
         );
         return () => unsubscribe();
     }, []);
@@ -92,63 +95,160 @@ export default function Misiones() {
         });
     };
 
+    // LÓGICA MEJORADA DE ELIMINAR (Si está activa, obliga a abortar primero)
     const eliminarMision = async (mision) => {
         if (!esGM) return;
-        if (window.confirm("¿Estás seguro de que deseas revocar y borrar este contrato?")) {
-            const asignados = mision.escuadrones_id || [];
-            for (let id of asignados) {
-                try { await updateDoc(doc(db, "escuadrones", id), { estado: 'En Base' }); } catch(e){}
-            }
-            await deleteDoc(doc(db, "misiones", mision.id));
-            await recargarTodo();
+        if (mision.estado === 'Desplegada') {
+            setAlertaAborto({ tipo: 'mision', mision, eliminarDespues: true });
+        } else {
+            setAlertaAborto({ tipo: 'eliminar', mision });
         }
     };
 
-    const iniciarDespliegueDefinitivo = async (mision, escuadronesDesplegados) => {
-        if (!window.confirm(`¿Autorizas el despliegue a "${mision.titulo}"? Las tropas quedarán bloqueadas hasta su regreso.`)) return;
+    const ejecutarEliminarMision = async () => {
+        const { mision } = alertaAborto;
+        const asignados = mision.escuadrones_id || [];
+        for (let id of asignados) {
+            try { await updateDoc(doc(db, "escuadrones", id), { estado: 'En Base' }); } catch(e){}
+        }
+        await deleteDoc(doc(db, "misiones", mision.id));
+        setAlertaAborto(null);
+        await recargarTodo();
+    }
 
-        const tiempoViajeBase = Number(mision.tiempo_viaje || 0);
-        let reduccionViajeMaxPct = 0;
-        escuadronesDesplegados.forEach(esc => {
-            if (esc.nave_id) {
-                const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
-                if (nave) {
-                    const r = Number(nave.req_rango || 1);
-                    const pct = r===1?0.10 : r===2?0.15 : r===3?0.25 : r===4?0.35 : r===5?0.50 : 0;
-                    if(pct > reduccionViajeMaxPct) reduccionViajeMaxPct = pct;
+    const solicitarDespliegue = (mision, escuadronesDesplegados) => {
+        setConfirmacionDespliegue({ mision, escuadronesDesplegados });
+    };
+
+    const ejecutarDespliegue = async (autoEjecutar) => {
+        const { mision, escuadronesDesplegados } = confirmacionDespliegue;
+        const miEscuadron = escuadronesDesplegados[0];
+        const enPosicion = miEscuadron.ubicacion_actual_id === mision.ubicacion_id;
+        const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(miEscuadron.nave_id)) : null;
+
+        let msViajeIda = 0;
+        let rutaLimpia = null;
+        const ahora = Date.now();
+
+        if (!enPosicion) {
+            let tiempoDias = 0;
+            if (miEscuadron.ubicacion_actual_id) {
+                const ruta = encontrarRutaOptima(miEscuadron.ubicacion_actual_id, mision.ubicacion_id, planetas, nave);
+                if (ruta) {
+                    tiempoDias = ruta.tiempoDias;
+                    rutaLimpia = ruta.puntos.map(p => ({ y: p.coords[0], x: p.coords[1] }));
                 }
+            } else if (miEscuadron.coords_espacio_profundo) {
+                const coordsOrigen = [miEscuadron.coords_espacio_profundo.y, miEscuadron.coords_espacio_profundo.x];
+                const dest = planetas.find(p => p.id === mision.ubicacion_id);
+                const dist = calcularDistanciaPitagorica(coordsOrigen, dest.coords);
+                let velEspacioProfundo = 0.5; 
+                if (nave) velEspacioProfundo = 1.25 * ((Number(nave.motor_subluz) || 3) / 5); 
+                tiempoDias = Math.round((dist / velEspacioProfundo) * 10) / 10;
+                rutaLimpia = [ {y: coordsOrigen[0], x: coordsOrigen[1]}, {y: dest.coords[0], x: dest.coords[1]} ];
             }
-        });
-        const tiempoViajeReal = Math.max(0, tiempoViajeBase - (tiempoViajeBase * reduccionViajeMaxPct));
+            msViajeIda = tiempoDias * 60 * 1000; 
+        }
 
+        const msLlegada = ahora + msViajeIda;
         const asignadosIds = mision.escuadrones_id || [];
-        for (let id of asignadosIds) { await updateDoc(doc(db, "escuadrones", id), { estado: 'Desplegado' }); }
+
+        for (let id of asignadosIds) {
+            const updateData = { estado: 'Desplegado' };
+            if (!enPosicion) {
+                updateData.estado_movimiento = 'En Tránsito';
+                updateData.ubicacion_destino_id = mision.ubicacion_id;
+                updateData.ubicacion_actual_id = null;
+                updateData.coords_espacio_profundo = null;
+                updateData.fecha_salida = ahora;
+                updateData.fecha_llegada = msLlegada;
+                updateData.ruta_visual = rutaLimpia;
+            }
+            await updateDoc(doc(db, "escuadrones", id), updateData);
+        }
 
         await updateDoc(doc(db, "misiones", mision.id), { 
             estado: 'Desplegada', 
-            fecha_despliegue: Date.now(), 
-            tiempo_viaje_real: tiempoViajeReal
+            fecha_despliegue: ahora, 
+            ms_viaje_ida: msViajeIda,
+            ms_ejecucion: (mision.tiempo_ejecucion || 1) * 60 * 1000,
+            auto_ejecutar: autoEjecutar,
+            fecha_inicio_ejecucion: null // Se llena si no es auto_ejecutar
         });
-        await recargarTodo();
-    };
-
-    const abortarMision = async (mision) => {
-        if (!window.confirm("¡ALERTA TÁCTICA! ¿Abortar la misión en curso? Las tropas usarán el mismo tiempo que llevan viajando para regresar a la base.")) return;
-        const msTranscurridos = horaActual - mision.fecha_despliegue;
-        await updateDoc(doc(db, "misiones", mision.id), {
-            estado: 'Abortando', fecha_aborto: Date.now(), tiempo_viaje_hecho_ms: msTranscurridos
-        });
-        await recargarTodo();
-    };
-
-    const completarRetirada = async (mision) => {
-        const asignados = mision.escuadrones_id || [];
-        for (let id of asignados) { await updateDoc(doc(db, "escuadrones", id), { estado: 'En Base' }); }
         
-        await updateDoc(doc(db, "misiones", mision.id), { 
-            estado: 'Pendiente', escuadrones_id: [], fecha_despliegue: null, estado_aborto: null, tiempo_viaje_hecho_ms: null 
+        setConfirmacionDespliegue(null);
+        await recargarTodo();
+    };
+
+    const iniciarEjecucionManual = async (misionId) => {
+        await updateDoc(doc(db, "misiones", misionId), {
+            fecha_inicio_ejecucion: Date.now()
         });
-        alert(`Fuerzas de la misión "${mision.titulo}" han regresado a la base tras abortar.`);
+        recargarTodo();
+    };
+
+    const solicitarAborto = (mision) => setAlertaAborto({ tipo: 'mision', mision });
+
+    const ejecutarAborto = async (decision) => {
+        const { mision, eliminarDespues } = alertaAborto;
+        const ahora = Date.now();
+        
+        for (let id of mision.escuadrones_id || []) {
+            const esc = escuadrones.find(e => e.id === id);
+            if (!esc) continue;
+
+            let updateData = { estado: 'En Base' }; 
+            
+            if (esc.estado_movimiento === 'En Tránsito') {
+                const posActual = calcularPosicionEnRuta(esc, ahora);
+                if (posActual) {
+                    if (decision === 'refugio') {
+                        let nearest = null; let minDist = Infinity;
+                        planetas.forEach(p => { 
+                            const d = calcularDistanciaPitagorica(posActual, p.coords); 
+                            if (d < minDist) { minDist = d; nearest = p; } 
+                        });
+                        
+                        if (nearest) {
+                            const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(esc.nave_id)) : null;
+                            let vel = 0.5; if(nave) vel = 1.25 * ((Number(nave.motor_subluz)||3)/5);
+                            const tiempoLlegada = ahora + (Math.round((minDist / vel) * 10) / 10) * 60000;
+
+                            updateData = {
+                                ...updateData,
+                                estado_movimiento: 'En Tránsito',
+                                ubicacion_destino_id: nearest.id,
+                                ubicacion_actual_id: null,
+                                coords_espacio_profundo: null,
+                                fecha_salida: ahora,
+                                fecha_llegada: tiempoLlegada,
+                                ruta_visual: [{y: posActual[0], x: posActual[1]}, {y: nearest.coords[0], x: nearest.coords[1]}]
+                            };
+                        }
+                    } else {
+                        updateData = {
+                            ...updateData,
+                            estado_movimiento: 'Estacionado',
+                            ubicacion_actual_id: null,
+                            coords_espacio_profundo: { y: posActual[0], x: posActual[1] },
+                            ubicacion_destino_id: null,
+                            fecha_salida: null, fecha_llegada: null, ruta_visual: null
+                        };
+                    }
+                }
+            }
+            await updateDoc(doc(db, "escuadrones", id), updateData);
+        }
+
+        if (eliminarDespues) {
+            await deleteDoc(doc(db, "misiones", mision.id));
+        } else {
+            await updateDoc(doc(db, "misiones", mision.id), { 
+                estado: 'Pendiente', escuadrones_id: [], fecha_despliegue: null, ms_viaje_ida: null, ms_ejecucion: null, auto_ejecutar: null, fecha_inicio_ejecucion: null 
+            });
+        }
+        
+        setAlertaAborto(null);
         await recargarTodo();
     };
 
@@ -156,11 +256,9 @@ export default function Misiones() {
         const asignados = mision.escuadrones_id || [];
         if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
-        // ¿GANAN O PIERDEN LA MISIÓN?
         const exito = (Math.random() * 100) <= probExitoReal; 
         const resultadoTexto = exito ? `Contrato cumplido con éxito. Extracción limpia asegurada.` : `Objetivo fallido. Fuerte resistencia enemiga. Las fuerzas se retiraron bajo fuego.`;
         
-        // RECUPERAMOS EL NIVEL DE PELIGROSIDAD
         const pLevel = mision.peligrosidad || 'Media';
         const dangerStats = DANGER_TABLE[pLevel];
 
@@ -180,7 +278,6 @@ export default function Misiones() {
         const multRango = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.5, 'S': 2.0, 'SS': 5.0 }[mision.rango] || 1;
         const xpEscuadronGanada = exito ? Math.round((1 * multDif * multRango) * 10) / 10 : 0;
         
-        // RATIO DE PODER: Modifica la gravedad del daño inicial
         const poderRatio = Math.max(0.5, crFuerzaTotal / (mision.cr_req || 1));
 
         let reporteBajasGlobal = [];
@@ -210,7 +307,6 @@ export default function Misiones() {
 
                 while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) newLevel++;
 
-                // ARMADURAS
                 let prevencionHeridas = 0;
                 if (soldado.equipo) {
                     Object.values(soldado.equipo).forEach(itemId => {
@@ -221,24 +317,17 @@ export default function Misiones() {
                     });
                 }
                 
-                // MOTOR DE CASCADA DE DAÑO
                 if (estadoSalud !== 'Muerto') {
-                    // Calculamos si recibe el primer golpe
                     let baseHitChance = exito ? dangerStats.win.hit_chance : dangerStats.fail.hit_chance;
-                    
-                    // Si fuiste muy fuerte, reduces el primer golpe.
                     baseHitChance = baseHitChance / poderRatio;
                     
-                    // La armadura reduce el golpe directo
                     const multiplicadorDefensa = Math.max(0.1, (100 - prevencionHeridas) / 100); 
                     const probHeridaReal = baseHitChance * multiplicadorDefensa;
 
                     if ((Math.random() * 100) < probHeridaReal) {
-                        // Fue alcanzado. Empieza en leve.
                         estadoSalud = 'Leve';
                         let gradoDanio = "leves";
                         
-                        // Si falló la misión, iniciamos la Cascada
                         if (!exito) {
                             const casc = dangerStats.fail.cascada;
                             if (Math.random() < casc[0]) { 
@@ -248,7 +337,6 @@ export default function Misiones() {
                                     if (Math.random() < casc[2]) {
                                         estadoSalud = 'Gravísima'; gradoDanio = "críticas";
                                         if (Math.random() < casc[3]) {
-                                            // LLEGÓ A LETAL
                                             if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
                                             else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; } } 
                                             else { estadoSalud = 'Muerto'; }
@@ -258,18 +346,14 @@ export default function Misiones() {
                             }
                         }
 
-                        if (estadoSalud === 'Muerto') {
-                            txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`);
-                        } else if (txtLogParts.length === 0) {
-                            txtLogParts.push(`🩸 ${soldado.nombre} con heridas ${gradoDanio}.`);
-                        }
+                        if (estadoSalud === 'Muerto') { txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } 
+                        else if (txtLogParts.length === 0) { txtLogParts.push(`🩸 ${soldado.nombre} con heridas ${gradoDanio}.`); }
                     }
                 }
 
                 if (txtLogParts.length > 0) {
                     const msg = txtLogParts.join(' ');
-                    bajasEscuadron.push(msg);
-                    reporteBajasGlobal.push(msg);
+                    bajasEscuadron.push(msg); reporteBajasGlobal.push(msg);
                 }
                 
                 await updateDoc(doc(db, "soldados", sId), { 
@@ -292,12 +376,8 @@ export default function Misiones() {
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
         
         setReporteAAR({
-            titulo: mision.titulo, 
-            escuadronNombre: nombresEscuadrones.join(" + "),
-            exito, 
-            descripcion: resultadoTexto, 
-            xp: `+${xpBaseGained} XP`, 
-            recompensas: recompensaObtenida,
+            titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "), exito, descripcion: resultadoTexto, 
+            xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida,
             xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), 
             bajas: reporteBajasGlobal
         });
@@ -308,7 +388,6 @@ export default function Misiones() {
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div className="panel-acciones" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '5px solid #F44336', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, color: '#F44336', textTransform: 'uppercase', letterSpacing: '2px', fontFamily: 'monospace' }}>Tablero de Contratos</h2>
-                
                 {esGM && (
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button className="btn-accion rojo" onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }}>+ Contrato Manual</button>
@@ -342,40 +421,70 @@ export default function Misiones() {
                                 if (diff <= 0) { expirada = true; } else { tiempoRestanteStr = formatoTiempo(diff); }
                             }
                         } else {
-                            const msViajeIda = (m.tiempo_viaje_real || 0) * MS_POR_DIA;
-                            const msEjecucion = (m.tiempo_ejecucion || 0) * MS_POR_DIA;
-                            const msTranscurridos = horaActual - m.fecha_despliegue;
+                            const msViajeTranscurridos = horaActual - m.fecha_despliegue;
+                            const msViajeIda = m.ms_viaje_ida || 0;
+                            const msEjecucion = m.ms_ejecucion || 60000;
 
-                            if (m.estado === 'Abortando') {
-                                const msDesdeAborto = horaActual - m.fecha_aborto;
-                                const msViajeHecho = m.tiempo_viaje_hecho_ms || 0;
-                                if (msDesdeAborto >= msViajeHecho) {
-                                    faseEstado = 'abortada_lista'; faseTitulo = "En Base (Abortada)"; pctProgreso = 100;
-                                } else {
-                                    faseEstado = 'abortando'; faseTitulo = "Regresando de aborto...";
-                                    tiempoRestanteStr = formatoTiempo(msViajeHecho - msDesdeAborto);
-                                    pctProgreso = (msDesdeAborto / msViajeHecho) * 100;
-                                }
+                            if (msViajeTranscurridos < msViajeIda) {
+                                faseEstado = 'ida'; 
+                                faseTitulo = "En Hiperespacio..."; 
+                                sePuedeAbortar = true;
+                                tiempoRestanteStr = formatoTiempo(msViajeIda - msViajeTranscurridos);
+                                pctProgreso = (msViajeTranscurridos / msViajeIda) * 100;
                             } else {
-                                if (msTranscurridos < msViajeIda) {
-                                    faseEstado = 'ida'; faseTitulo = "Viajando hacia el objetivo..."; sePuedeAbortar = true;
-                                    tiempoRestanteStr = formatoTiempo(msViajeIda - msTranscurridos);
-                                    pctProgreso = (msTranscurridos / msViajeIda) * 100;
-                                } else if (msTranscurridos < msViajeIda + msEjecucion) {
-                                    faseEstado = 'ejecucion'; faseTitulo = "En Combate...";
-                                    tiempoRestanteStr = formatoTiempo((msViajeIda + msEjecucion) - msTranscurridos);
-                                    pctProgreso = ((msTranscurridos - msViajeIda) / msEjecucion) * 100;
-                                } else if (msTranscurridos < (msViajeIda * 2) + msEjecucion) {
-                                    faseEstado = 'vuelta'; faseTitulo = "Regresando...";
-                                    tiempoRestanteStr = formatoTiempo(((msViajeIda * 2) + msEjecucion) - msTranscurridos);
-                                    pctProgreso = ((msTranscurridos - msViajeIda - msEjecucion) / msViajeIda) * 100;
+                                // Han llegado. ¿Auto-ejecutan o esperan órdenes?
+                                if (m.auto_ejecutar || m.fecha_inicio_ejecucion) {
+                                    const inicioEjecucion = m.fecha_inicio_ejecucion || (m.fecha_despliegue + msViajeIda);
+                                    const msEjecucionTranscurridos = horaActual - inicioEjecucion;
+
+                                    if (msEjecucionTranscurridos < msEjecucion) {
+                                        faseEstado = 'ejecucion'; 
+                                        faseTitulo = "Ejecutando Operación...";
+                                        tiempoRestanteStr = formatoTiempo(msEjecucion - msEjecucionTranscurridos);
+                                        pctProgreso = (msEjecucionTranscurridos / msEjecucion) * 100;
+                                    } else {
+                                        faseEstado = 'lista'; 
+                                        faseTitulo = "Fuerzas Listas en Sector"; 
+                                        pctProgreso = 100;
+                                    }
                                 } else {
-                                    faseEstado = 'lista'; faseTitulo = "Fuerzas Listas"; pctProgreso = 100;
+                                    faseEstado = 'esperando';
+                                    faseTitulo = "En Posición. Esperando Órdenes.";
+                                    tiempoRestanteStr = "ESPERANDO";
+                                    pctProgreso = 100; // Viaje completado 100%
                                 }
                             }
                         }
 
-                        // CÁLCULO DE PROBABILIDAD DE ÉXITO (Basado en Rango y TR vs CR)
+                        const miEscuadron = escuadrones.find(e => e.lider === userRole);
+                        const enPosicion = esGM || (miEscuadron && miEscuadron.ubicacion_actual_id === m.ubicacion_id);
+                        const planetaDestino = planetas?.find(p => p.id === m.ubicacion_id);
+                        const nombrePlaneta = planetaDestino ? planetaDestino.nombre : (m.lugar || "Sector Desconocido");
+
+                        let tiempoViajeDias = Number(m.tiempo_viaje) || 0;
+                        if (escuadronesAsignados.length > 0 && !estaDesplegada) {
+                            const escLider = escuadronesAsignados[0];
+                            const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(escLider.nave_id)) : null;
+                            if (escLider.ubicacion_actual_id && escLider.ubicacion_actual_id !== m.ubicacion_id) {
+                                const ruta = encontrarRutaOptima(escLider.ubicacion_actual_id, m.ubicacion_id, planetas, nave);
+                                if (ruta) tiempoViajeDias = ruta.tiempoDias;
+                            } else if (escLider.coords_espacio_profundo) {
+                                const dest = planetas.find(p => p.id === m.ubicacion_id);
+                                if(dest){
+                                    const dist = calcularDistanciaPitagorica([escLider.coords_espacio_profundo.y, escLider.coords_espacio_profundo.x], dest.coords);
+                                    let velEspacioProfundo = 0.5; 
+                                    if (nave) velEspacioProfundo = 1.25 * ((Number(nave.motor_subluz) || 3) / 5); 
+                                    tiempoViajeDias = Math.round((dist / velEspacioProfundo) * 10) / 10;
+                                }
+                            } else if (escLider.ubicacion_actual_id === m.ubicacion_id) {
+                                tiempoViajeDias = 0;
+                            }
+                        } else if (estaDesplegada) {
+                            tiempoViajeDias = Math.round((m.ms_viaje_ida / 60000) * 10) / 10; 
+                        }
+
+                        const tiempoEjecucionDias = Number(m.tiempo_ejecucion) || 1;
+
                         let crFuerzaTotal = 0, probExito = 0;
                         if (!esNueva) {
                             let moralPromedio = 0;
@@ -383,30 +492,14 @@ export default function Misiones() {
                                 crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo);
                                 moralPromedio += getMoralData(esc.moral).mod;
                             });
+                            if (escuadronesAsignados.length > 0) moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
                             
-                            if (escuadronesAsignados.length > 0) {
-                                moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
-                            } else {
-                                moralPromedio = 0;
-                            }
-                            
-                            // Bases y Topes de Éxito según Complejidad (Rango)
                             const baseProb = { 'E': 95, 'D': 95, 'C': 95, 'B': 90, 'A': 90, 'S': 80, 'SS': 50 }[m.rango] || 80;
                             const maxProb  = { 'E': 99, 'D': 99, 'C': 95, 'B': 95, 'A': 90, 'S': 85, 'SS': 80 }[m.rango] || 95;
-                            
                             const ratio_poder = crFuerzaTotal / (m.cr_req || 1);
                             const modificadorPoder = (ratio_poder - 1) * 35; 
-                                                        
                             let calculo = baseProb + Math.round(modificadorPoder) + moralPromedio;
                             probExito = Math.min(maxProb, Math.max(5, calculo));
-
-                            // --- NUEVO CÁLCULO VISUAL DE RIESGO ---
-                            const ratio_seguridad = Math.max(0.5, ratio_poder);
-                            const dangerStats = DANGER_TABLE[m.peligrosidad || 'Media'];
-
-                            // Lo guardamos en constantes locales en vez de m.riesgo...
-                            const riesgoWinVisual = Math.min(100, Math.round(dangerStats.win.hit_chance / ratio_seguridad));
-                            const riesgoFailVisual = Math.min(100, Math.round(dangerStats.fail.hit_chance / ratio_seguridad));
                         }
 
                         return (
@@ -442,10 +535,13 @@ export default function Misiones() {
                                 
                                 <div style={{ borderTop: '1px dashed #3f3f5a', paddingTop: '10px', marginBottom: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>📍 <b>Destino: {nombrePlaneta}</b></span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>
-                                            ⏳ Duración: <b>{Math.round((Number(m.tiempo_viaje || 0) + Number(m.tiempo_ejecucion || 3)) * 10) / 10} d</b>
+                                            🚀 Viaje: <b>{tiempoViajeDias} d</b> | ⚔️ Op: <b>{tiempoEjecucionDias} d</b>
                                         </span>
-                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>⭐ XP Est: <b>+{(m.xp ? Number(m.xp) : (m.cr_req || 1) * 150)}</b></span>
+                                        <span style={{ fontSize: '0.8rem', color: '#00BCD4' }}>⭐ XP: <b>+{(m.xp ? Number(m.xp) : (m.cr_req || 1) * 150)}</b></span>
                                     </div>
                                     <div style={{ fontSize: '0.8rem', color: '#FFC107' }}>💰 <b>{m.recompensa || 'Por definir'}</b></div>
                                 </div>
@@ -453,13 +549,13 @@ export default function Misiones() {
                                 {estaDesplegada && (
                                     <div style={{ backgroundColor: '#000', padding: '10px', borderRadius: '6px', marginBottom: '15px', border: '1px solid #333' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.8rem' }}>
-                                            <span style={{ color: faseEstado === 'lista' || faseEstado === 'abortada_lista' ? '#4CAF50' : '#00BCD4', fontWeight: 'bold', textTransform: 'uppercase' }}>{faseTitulo}</span>
-                                            {faseEstado !== 'lista' && faseEstado !== 'abortada_lista' && (
+                                            <span style={{ color: faseEstado === 'lista' ? '#4CAF50' : '#00BCD4', fontWeight: 'bold', textTransform: 'uppercase' }}>{faseTitulo}</span>
+                                            {faseEstado !== 'lista' && (
                                                 <span style={{ fontFamily: 'monospace', color: '#fff' }}>⏳ {tiempoRestanteStr}</span>
                                             )}
                                         </div>
                                         <div style={{ width: '100%', height: '8px', backgroundColor: '#333', borderRadius: '4px', overflow: 'hidden' }}>
-                                            <div style={{ width: `${pctProgreso}%`, height: '100%', backgroundColor: faseEstado === 'abortando' ? '#F44336' : (faseEstado === 'lista' ? '#9C27B0' : '#00BCD4'), transition: 'width 1s linear' }}></div>
+                                            <div style={{ width: `${pctProgreso}%`, height: '100%', backgroundColor: faseEstado === 'lista' ? '#9C27B0' : '#00BCD4', transition: 'width 1s linear' }}></div>
                                         </div>
                                     </div>
                                 )}
@@ -485,67 +581,145 @@ export default function Misiones() {
                                                 <p style={{ margin: '0 0 5px 0', color: '#888', fontSize: '0.85rem' }}>Fuerzas sin asignar.</p>
                                                 <p style={{ margin: '0 0 5px 0', color: '#e0e0e0', fontSize: '0.9rem' }}>🎯 Objetivo CR: <b style={{color: '#F44336'}}>{m.cr_req}</b></p>
                                                 <p style={{ margin: 0, color: '#F44336', fontSize: '0.75rem' }}>
-                                                    🩸 Riesgo Base: {DANGER_TABLE[m.peligrosidad || 'Media'].win.hit_chance}% (Éxito) | {DANGER_TABLE[m.peligrosidad || 'Media'].fail.hit_chance}% (Fracaso)
+                                                    🩸 Riesgo: {DANGER_TABLE[m.peligrosidad || 'Media'].fail.hit_chance}% de resultar herido en fracaso.
                                                 </p>
                                             </div>
                                         )}
                                     </div>
                                 )}
-
-                                {estaDesplegada && (
-                                    <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '6px', border: '1px solid #3f3f5a', marginTop: 'auto' }}>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                            {escuadronesAsignados.map(e => <span key={e.id} style={{ backgroundColor: '#323245', padding: '4px 8px', borderRadius: '4px', color: '#00BCD4', fontSize: '0.75rem', fontWeight: 'bold' }}>🛡️ [{e.nombre}]</span>)}
-                                        </div>
-                                    </div>
-                                )}
                                 
                                 {!esInvitado && (
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                                        {esNueva && (
-                                            <button className="btn-accion" style={{ flex: 1, backgroundColor: expirada ? '#333' : '#F44336', color: expirada ? '#888' : '#fff', cursor: expirada ? 'not-allowed' : 'pointer' }} onClick={() => { if (!expirada) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} disabled={expirada}>
-                                                {expirada ? "Contrato Expirado" : "Asignar Fuerzas"}
-                                            </button>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+                                        {esNueva && !enPosicion && !expirada && (
+                                            <div style={{ padding: '10px', backgroundColor: '#2a2a35', borderLeft: '4px solid #FF9800', borderRadius: '4px', fontSize: '0.8rem', color: '#ccc' }}>
+                                                📍 <b>El contrato exige presencia.</b> Navega hacia <b>{nombrePlaneta}</b> en el Mapa Estelar para aceptar.
+                                            </div>
                                         )}
 
-                                        {estaPreparando && (
-                                            <>
-                                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => { setMisionActiva(m); setIsModalDesplegarOpen(true); }}>
-                                                    ⚙️ Reasignar
+                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                            {esNueva && (
+                                                <button 
+                                                    className="btn-accion" 
+                                                    style={{ flex: 1, backgroundColor: expirada ? '#333' : (!enPosicion ? '#444' : '#F44336'), color: expirada || !enPosicion ? '#888' : '#fff', cursor: expirada || !enPosicion ? 'not-allowed' : 'pointer' }} 
+                                                    onClick={() => { if (!expirada && enPosicion) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} 
+                                                    disabled={expirada || !enPosicion}
+                                                >
+                                                    {expirada ? "Expirado" : (!enPosicion ? "Fuera de Rango" : "Asignar Fuerzas")}
                                                 </button>
-                                                <button className="btn-accion" style={{ flex: 2, backgroundColor: '#4CAF50', color: '#fff', fontSize: '0.85rem', padding: '10px', fontWeight: 'bold' }} onClick={() => iniciarDespliegueDefinitivo(m, escuadronesAsignados)}>
-                                                    🚀 Iniciar Despliegue
-                                                </button>
-                                            </>
-                                        )}
+                                            )}
 
-                                        {estaDesplegada && (
-                                            <>
-                                                {sePuedeAbortar && (
-                                                    <button className="btn-accion rojo" style={{ flex: 1, fontSize: '0.85rem', padding: '10px' }} onClick={() => abortarMision(m)}>
-                                                        🚨 Abortar (Retirada)
+                                            {estaPreparando && (
+                                                <>
+                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => { setMisionActiva(m); setIsModalDesplegarOpen(true); }}>
+                                                        ⚙️ Reasignar
                                                     </button>
-                                                )}
-                                                {faseEstado === 'abortada_lista' ? (
-                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => completarRetirada(m)}>
-                                                        🔙 Finalizar Retirada
+                                                    <button className="btn-accion" style={{ flex: 2, backgroundColor: '#4CAF50', color: '#fff', fontSize: '0.85rem', padding: '10px', fontWeight: 'bold' }} onClick={() => solicitarDespliegue(m, escuadronesAsignados)}>
+                                                        🚀 Desplegar Tropas
                                                     </button>
-                                                ) : faseEstado === 'lista' ? (
-                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => resolverMision(m, probExito, crFuerzaTotal)}>
-                                                        ▶ Resolver Misión
-                                                    </button>
-                                                ) : (
-                                                    <button className="btn-accion" style={{ flex: 1, backgroundColor: '#333', color: '#888', fontSize: '0.85rem', padding: '10px', cursor: 'not-allowed' }} disabled>
-                                                        {faseEstado === 'abortando' ? 'Abortando...' : 'En Operación...'}
-                                                    </button>
-                                                )}
-                                            </>
-                                        )}
+                                                </>
+                                            )}
+
+                                            {estaDesplegada && (
+                                                <>
+                                                    {faseEstado === 'esperando' && (
+                                                        <button className="btn-accion" style={{ width: '100%', marginBottom: '5px', backgroundColor: '#4CAF50', color: '#fff', border: 'none', padding: '8px', borderRadius: '2px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }} onClick={() => iniciarEjecucionManual(m.id)}>
+                                                            ▶ INICIAR OPERACIÓN
+                                                        </button>
+                                                    )}
+
+                                                    {sePuedeAbortar || faseEstado === 'ejecucion' || faseEstado === 'esperando' ? (
+                                                        <button className="btn-accion rojo" style={{ flex: 1, fontSize: '0.85rem', padding: '10px' }} onClick={() => solicitarAborto(m)}>
+                                                            🚨 {faseEstado === 'ida' ? 'Abortar Viaje' : 'Abortar Operación'}
+                                                        </button>
+                                                    ) : null}
+
+                                                    {faseEstado === 'lista' && (
+                                                        <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem', padding: '10px' }} onClick={() => resolverMision(m, probExito, crFuerzaTotal)}>
+                                                            ▶ Resolver Misión
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* MODALES TÁCTICOS */}
+
+            {/* Modal de Confirmación de Despliegue (Verde/Ámbar) */}
+            {confirmacionDespliegue && (
+                <div className="modal-alerta-tactica">
+                    <div className="modal-alerta-caja" style={{ borderColor: '#FF9800', boxShadow: '0 0 40px rgba(255, 152, 0, 0.3)' }}>
+                        <h2 style={{ color: '#FF9800', margin: '0 0 10px 0' }}>🚀 AUTORIZACIÓN DE DESPLIEGUE</h2>
+                        <p style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '25px' }}>
+                            ¿Cómo deseas proceder con la operación <b>{confirmacionDespliegue.mision.titulo}</b>?
+                        </p>
+                        
+                        <button className="modal-alerta-btn" onClick={() => ejecutarDespliegue(true)} style={{ backgroundColor: '#1a3300', borderColor: '#4CAF50', color: '#4CAF50' }}>
+                            🚀 Desplegar y Ejecutar (Automático)
+                            <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '4px', textTransform: 'none' }}>Al llegar al destino, las tropas iniciarán el asalto de inmediato.</div>
+                        </button>
+
+                        <button className="modal-alerta-btn" onClick={() => ejecutarDespliegue(false)} style={{ backgroundColor: '#332200', borderColor: '#FFC107', color: '#FFC107' }}>
+                            🛡️ Viajar y Esperar Órdenes
+                            <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '4px', textTransform: 'none' }}>La flota se posicionará en órbita silenciosa hasta que autorices el ataque.</div>
+                        </button>
+                        
+                        <button className="modal-alerta-btn seguro" onClick={() => setConfirmacionDespliegue(null)} style={{ marginTop: '20px' }}>
+                            ✖ Cancelar
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Aborto de Misión (Rojo) */}
+            {alertaAborto && alertaAborto.tipo === 'mision' && (
+                <div className="modal-alerta-tactica">
+                    <div className="modal-alerta-caja">
+                        <h2 style={{ color: '#F44336', margin: '0 0 10px 0' }}>⚠️ DIRECTIVA DE ABORTO</h2>
+                        <p style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '25px' }}>
+                            Las fuerzas se retirarán de la operación <b>{alertaAborto.mision.titulo}</b>. ¿Qué orden de emergencia debemos enviar a la flota?
+                        </p>
+                        
+                        <button className="modal-alerta-btn" onClick={() => ejecutarAborto('refugio')}>
+                            ↩️ Buscar refugio en sistema aliado
+                            <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '4px', textTransform: 'none' }}>El ordenador calculará la ruta al astro más cercano.</div>
+                        </button>
+                        
+                        <button className="modal-alerta-btn" onClick={() => ejecutarAborto('varado')}>
+                            🛑 Detener motores inmediatamente
+                            <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '4px', textTransform: 'none' }}>Las naves quedarán varadas a la espera de órdenes.</div>
+                        </button>
+
+                        <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '20px' }}>
+                            ✖ Cancelar (Mantener Órdenes)
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Eliminar Misión (Para el GM) */}
+            {alertaAborto && alertaAborto.tipo === 'eliminar' && (
+                <div className="modal-alerta-tactica">
+                    <div className="modal-alerta-caja" style={{ borderColor: '#F44336' }}>
+                        <h2 style={{ color: '#F44336', margin: '0 0 10px 0' }}>🗑️ ELIMINAR CONTRATO</h2>
+                        <p style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '25px' }}>
+                            ¿Estás seguro de que deseas eliminar permanentemente <b>{alertaAborto.mision.titulo}</b> de la red?
+                            <br/><br/>
+                            <span style={{ color: '#F44336' }}>Esta acción no se puede deshacer y retirará a los escuadrones asignados.</span>
+                        </p>
+                        <button className="modal-alerta-btn" onClick={ejecutarEliminarMision}>
+                            ☠️ Eliminar Contrato
+                        </button>
+                        <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '10px' }}>
+                            ✖ Cancelar
+                        </button>
+                    </div>
                 </div>
             )}
 

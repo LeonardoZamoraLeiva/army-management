@@ -580,3 +580,135 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 }
 .perk-badge.base { background: #3f3f5a; border: 1px solid #888; color: #eee; }
 .perk-badge.eq { background: rgba(0, 188, 212, 0.2); border: 1px solid #00BCD4; color: #00BCD4; }
+
+/* =========================================
+   ANIMACIONES Y EFECTOS DEL MAPA ESTELAR
+   ========================================= */
+
+/* Estela de nave en movimiento */
+.ruta-animada { animation: dashAnim 2s linear infinite; }
+@keyframes dashAnim { to { stroke-dashoffset: -30; } }
+
+/* Botones Minimalistas Expansibles del GM */
+.btn-gm-mini {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    transition: max-width 0.3s ease, background-color 0.2s;
+    cursor: pointer;
+    border: none;
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding: 0 6px;
+}
+.btn-gm-mini:hover {
+    max-width: 130px; /* Se expande suavemente */
+}
+.btn-gm-mini .btn-texto {
+    font-size: 0.75rem;
+    margin-left: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease 0.1s;
+}
+.btn-gm-mini:hover .btn-texto {
+    opacity: 1;
+}
+
+/* Scrollbar futurista para los paneles internos */
+.scroll-interno::-webkit-scrollbar { width: 4px; }
+.scroll-interno::-webkit-scrollbar-track { background: transparent; }
+.scroll-interno::-webkit-scrollbar-thumb { background: #3f3f5a; border-radius: 4px; }
+.scroll-interno::-webkit-scrollbar-thumb:hover { background: #00BCD4; }
+
+/* =========================================
+   MODAL DE ALERTA TÁCTICA (ABORTO DE MISIÓN)
+   ========================================= */
+.modal-alerta-tactica {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background-color: rgba(20, 0, 0, 0.85);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 9999;
+    backdrop-filter: blur(5px);
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-alerta-caja {
+    background-color: #110000;
+    border: 2px solid #F44336;
+    box-shadow: 0 0 40px rgba(244, 67, 54, 0.5);
+    padding: 30px;
+    border-radius: 8px;
+    max-width: 450px;
+    text-align: center;
+    color: #fff;
+    font-family: monospace;
+}
+
+.modal-alerta-btn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 12px;
+    background-color: #2a0000;
+    color: #F44336;
+    border: 1px solid #F44336;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    transition: all 0.2s;
+}
+
+.modal-alerta-btn:hover {
+    background-color: #F44336;
+    color: #fff;
+}
+
+.modal-alerta-btn.seguro {
+    border-color: #555;
+    color: #aaa;
+    background-color: #111;
+}
+
+.modal-alerta-btn.seguro:hover {
+    background-color: #555;
+    color: #fff;
+}
+
+/* =========================================
+   EFECTOS DEL CENTRO DE MANDO (HUD)
+   ========================================= */
+.planeta-seleccionado-glow {
+    animation: pulsoCyan 1.5s infinite alternate;
+}
+@keyframes pulsoCyan {
+    0% { stroke: #fff; stroke-width: 4px; }
+    100% { stroke: #00BCD4; stroke-width: 8px; filter: drop-shadow(0 0 8px #00BCD4); }
+}
+
+.texto-truncado {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.input-filtro-galactico {
+    background-color: #111;
+    color: #fff;
+    border: 1px solid #3f3f5a;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    width: 100%;
+    box-sizing: border-box; /* <-- ESTO ARREGLA QUE SE SALGA DEL BORDE */
+}
+.input-filtro-galactico:focus {
+    border-color: #00BCD4;
+    outline: none;
+}

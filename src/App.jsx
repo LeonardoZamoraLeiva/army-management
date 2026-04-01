@@ -7,6 +7,7 @@ import Hangar from './components/Hangar';
 import Escuadrones from './components/Escuadrones';
 import Misiones from './components/Misiones';
 import ModalLogin from './components/ModalLogin'; // IMPORTAMOS EL MODAL
+import MapaEstelar from './components/MapaEstelar'; 
 
 function App() {
   const [vistaActiva, setVistaActiva] = useState('barracones');
@@ -63,8 +64,11 @@ function App() {
           <button className={`btn-tab ${vistaActiva === 'armeria' ? 'activo' : ''}`} onClick={() => setVistaActiva('armeria')}>
             🔫 Armería
           </button>
-          <button className={`btn-tab ${vistaActiva === 'misiones' ? 'activo' : ''}`} onClick={() => setVistaActiva('misiones')}>
+          {/* <button className={`btn-tab ${vistaActiva === 'misiones' ? 'activo' : ''}`} onClick={() => setVistaActiva('misiones')}>
             🌍 Misiones
+          </button> */}
+          <button className={`btn-tab ${vistaActiva === 'mapa' ? 'activo' : ''}`} onClick={() => setVistaActiva('mapa')}>
+            🌍 Mapa
           </button>
         </div>
       </header>
@@ -75,6 +79,7 @@ function App() {
         {vistaActiva === 'escuadrones' && <Escuadrones />}
         {vistaActiva === 'armeria' && <Armeria />}
         {vistaActiva === 'misiones' && <Misiones />}
+        {vistaActiva === 'mapa' && <MapaEstelar />}
       </main>
 
       {/* Insertamos el modal al final */}

@@ -22,7 +22,8 @@ export default function ModalLogin({ isOpen, onClose }) {
     };
 
     return (
-        <div className="modal" style={{ display: 'flex' }}>
+        <div className="modal" style={{ display: 'flex', zIndex: 9999, /* <-- ASEGÚRATE DE QUE ESTO ESTÉ AQUÍ */
+}}>
             <div className="contenido-modal datapad-container" style={{ width: '400px', borderTopColor: '#00BCD4', borderColor: '#00BCD4' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
                 <h2 style={{ color: '#00BCD4', marginTop: 0, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>Terminal de Mando</h2>

@@ -17,7 +17,8 @@ const ROLE_MAP = {
 };
 
 export const DataProvider = ({ children }) => {
-    const [data, setData] = useState({ soldados: [], escuadrones: [], misiones: [], equipo: [], vehiculos: [] });
+    // AÑADIDO: planetas: [] en el estado inicial
+    const [data, setData] = useState({ soldados: [], escuadrones: [], misiones: [], equipo: [], vehiculos: [], planetas: [] });
     const [loading, setLoading] = useState(true);
     
     const [user, setUser] = useState(null);
@@ -27,12 +28,14 @@ export const DataProvider = ({ children }) => {
     const cargarTodo = async () => {
         setLoading(true);
         try {
-            const [s_snap, e_snap, m_snap, eq_snap, v_snap] = await Promise.all([
+            // AÑADIDO: p_snap para los planetas
+            const [s_snap, e_snap, m_snap, eq_snap, v_snap, p_snap] = await Promise.all([
                 getDocs(collection(db, "soldados")),
                 getDocs(collection(db, "escuadrones")),
                 getDocs(collection(db, "misiones")),
                 getDocs(collection(db, "equipo")),
-                getDocs(collection(db, "vehiculos"))
+                getDocs(collection(db, "vehiculos")),
+                getDocs(collection(db, "planetas")) // <--- NUEVA COLECCIÓN
             ]);
 
             setData({
@@ -40,27 +43,27 @@ export const DataProvider = ({ children }) => {
                 escuadrones: e_snap.docs.map(d => ({ id: d.id, ...d.data() })),
                 misiones: m_snap.docs.map(d => ({ id: d.id, ...d.data() })),
                 equipo: eq_snap.docs.map(d => ({ id: d.id, ...d.data() })),
-                vehiculos: v_snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                vehiculos: v_snap.docs.map(d => ({ id: d.id, ...d.data() })),
+                planetas: p_snap.docs.map(d => ({ id: d.id, ...d.data() })) // <--- AÑADIDO AL ESTADO
             });
         } catch (error) { console.error("Error de enlace con Firebase:", error); } 
         finally { setLoading(false); }
     };
 
-useEffect(() => {
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          if (currentUser) {
-              const rol = ROLE_MAP[currentUser.email] || 'Espectador';
-              setUserRole(rol);
-          } else {
-              setUserRole(null);
-          }
-          // AHORA CARGAMOS LA DATA SIEMPRE, INCLUSO COMO INVITADO
-          cargarTodo();
-          setAuthLoading(false);
-      });
-      return () => unsubscribe();
-  }, []);
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            if (currentUser) {
+                const rol = ROLE_MAP[currentUser.email] || 'Espectador';
+                setUserRole(rol);
+            } else {
+                setUserRole(null);
+            }
+            cargarTodo();
+            setAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     const logout = async () => {
         await signOut(auth);

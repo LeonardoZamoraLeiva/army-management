@@ -8,11 +8,15 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
     const { escuadrones, soldados, vehiculos, recargarTodo, userRole } = useData();
     const esGM = userRole === 'GM';
 
+    // AÑADIDO: La clave de la solución. Solo es edición si trae un ID real de Firebase.
+    const esEdicion = escuadronData && escuadronData.id;
+
     const estadoInicial = {
         nombre: '', faccion: '', lema: '', logo: '',
         tipo: 'Asalto', lider_id: '', miembros: [],
         nave_id: '', vehiculo_id: '', droide_id: '', estado: 'En Base',
-        xp_escuadron: 0, moral: 50, bono_cr: 0, mtotales: 0, mexito: 0 
+        xp_escuadron: 0, moral: 50, bono_cr: 0, mtotales: 0, mexito: 0,
+        ubicacion_actual_id: 'zhZaG8Be11ZIIuj7GU5O'
     };
     const [formData, setFormData] = useState(estadoInicial);
 
@@ -59,8 +63,10 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
         };
 
         try {
-            if (escuadronData) await updateDoc(doc(db, "escuadrones", escuadronData.id), dataAEnviar);
+            // CORREGIDO: Usamos esEdicion para evitar el crasheo de ID undefined
+            if (esEdicion) await updateDoc(doc(db, "escuadrones", escuadronData.id), dataAEnviar);
             else await addDoc(collection(db, "escuadrones"), dataAEnviar);
+            
             await recargarTodo();
             onClose();
         } catch (error) { console.error("Error guardando:", error); }
@@ -85,7 +91,7 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
 
     escuadrones.forEach(esc => {
         if (esc.faccion && esc.faccion !== 'Sin Afiliación') faccionesSet.add(esc.faccion);
-        if (escuadronData && esc.id === escuadronData.id) return; 
+        if (esEdicion && esc.id === escuadronData.id) return; // CORREGIDO: Evita conflictos al editar
         if (esc.lider_id) assignedSoldiers.add(String(esc.lider_id));
         (esc.miembros || []).forEach(m => { if (m) assignedSoldiers.add(String(m)); });
         if (esc.nave_id) assignedVehicles.add(String(esc.nave_id));
@@ -109,22 +115,22 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
     const vehiculosDisponibles = vehiculos.filter(v => v.categoria !== 'Droide' && !assignedVehicles.has(String(v.id)));
     const droidesDisponibles = vehiculos.filter(v => v.categoria === 'Droide' && !assignedDroids.has(String(v.id)));
 
-    // Estilo para campos bloqueados
     const estiloLock = !esGM ? { backgroundColor: '#1a1a1a', opacity: 0.7, cursor: 'not-allowed' } : {};
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
             <div className="contenido-modal" style={{ borderTop: '4px solid #FF9800', width: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
+                {/* CORREGIDO: Título correcto basado en esEdicion */}
                 <h2 style={{ color: '#FF9800', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-                    {escuadronData ? '⚙️ Ajustes de Escuadrón' : '🛡️ Formar Batallón'}
+                    {esEdicion ? '⚙️ Ajustes de Escuadrón' : '🛡️ Formar Batallón'}
                 </h2>
                 
                 <form onSubmit={handleSubmit}>
+                    {/* ... (Todo el formulario queda igual) ... */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                         <div className="grupo-input"><label>Nombre (Ej: Alpha-1)</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
                         
-                        {/* SELECTOR DE FACCIÓN BLOQUEADO PARA COMANDANTES */}
                         <div className="grupo-input">
                             <label>Facción Titular</label>
                             <select 
@@ -147,7 +153,27 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                         </div>
 
                         <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Lema / Refrán</label><input name="lema" value={formData.lema} onChange={handleChange} /></div>
-                        
+                        {/* AÑADIDO DE VUELTA: Campo para el Emblema del Escuadrón */}
+                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}>
+                            <label>URL del Emblema / Logo (Ej: https://...imgur.com/logo.png)</label>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                {formData.logo && (
+                                    <img 
+                                        src={formData.logo} 
+                                        alt="Vista previa emblema" 
+                                        style={{ width: '40px', height: '40px', borderRadius: '5px', objectFit: 'cover', border: '1px solid #333', backgroundColor: '#000' }} 
+                                        onError={(e) => e.target.style.display = 'none'} // Oculta si la URL es inválida
+                                    />
+                                )}
+                                <input 
+                                    name="logo" 
+                                    value={formData.logo} 
+                                    onChange={handleChange} 
+                                    placeholder="Pega aquí la URL de la imagen..." 
+                                    style={{ flex: 1 }}
+                                />
+                            </div>
+                        </div>
                         <div className="grupo-input"><label>Tipo Operación</label>
                             <select name="tipo" value={formData.tipo} onChange={handleChange}>
                                 <option>Asalto</option><option>Reconocimiento</option><option>Infiltración</option>
@@ -210,8 +236,7 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                         </div>
                     </div>
 
-                    {/* PANEL DE CONTROL OCULTO PARA COMANDANTES */}
-                    {esGM && escuadronData && (
+                    {esGM && esEdicion && (
                         <div style={{ backgroundColor: '#323245', padding: '15px', borderRadius: '5px', borderLeft: '3px solid #F44336', marginTop: '15px' }}>
                             <h4 style={{ margin: '0 0 10px 0', color: '#fff' }}>Panel de Control GM (Privado)</h4>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
@@ -222,8 +247,9 @@ export default function ModalEscuadron({ isOpen, onClose, escuadronData }) {
                         </div>
                     )}
 
-                    <div className="botones-modal" style={{ justifyContent: escuadronData ? 'space-between' : 'flex-end', marginTop: '20px' }}>
-                        {escuadronData && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Disolver Escuadrón</button>}
+                    {/* CORREGIDO: Usamos esEdicion para alinear los botones y ocultar el de borrar */}
+                    <div className="botones-modal" style={{ justifyContent: esEdicion ? 'space-between' : 'flex-end', marginTop: '20px' }}>
+                        {esEdicion && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Disolver Escuadrón</button>}
                         <button type="submit" className="btn-accion naranja">💾 Oficializar</button>
                     </div>
                 </form>

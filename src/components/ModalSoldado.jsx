@@ -156,7 +156,7 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                                         <option value="Sano">🟢 Sano (100% TR)</option>
                                         <option value="Leve">🟡 Heridas Leves (80% TR)</option>
                                         <option value="Media">🟠 Heridas Medias (60% TR)</option>
-                                        <option value="Grave">🔴 Heridas Graves (350% TR)</option>
+                                        <option value="Grave">🔴 Heridas Graves (35% TR)</option>
                                         <option value="Gravísima">🟣 Herida Letal (0% TR)</option>
                                         <option value="Muerto">💀 K.I.A (Muerto en Combate)</option>
                                     </select>

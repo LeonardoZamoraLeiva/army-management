@@ -361,20 +361,24 @@ const calibrarPrestigioVeteranos = async () => {
                                                     return (
                                                         <div 
                                                             key={s.id} 
-                                                            draggable={puedeEditar(s)} // AÑADIDO: Control de arrastre
+                                                            draggable={puedeEditar(s)} 
                                                             onDragStart={(e) => handleDragStart(e, s)}
                                                             onDragOver={(e) => handleDragOverItem(e, s)}
                                                             onDragLeave={() => setDragTargetId(null)}
                                                             onDrop={(e) => handleDrop(e, s, faccion)}
                                                             className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} 
                                                             onClick={() => setSoldadoSeleccionado(s)}
-
+                                                            // AÑADIDO: width, maxWidth y overflow hidden para fijar el tamaño
+                                                            style={{ width: '130px', minWidth: '130px', maxWidth: '130px', overflow: 'hidden' }}
                                                         >
                                                             <span className="chapa-nivel">Lvl {s.nivel || 1}</span>
                                                             <div className="chapa-estado" style={{ backgroundColor: configS.color }} title={configS.texto}></div>
                                                             <img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} className="chapa-foto" alt="perfil" style={{ borderColor: esSeleccionado ? '#4CAF50' : '#555' }} />
-                                                            <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: esSeleccionado ? '#4CAF50' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.nombre}</h4>
-                                                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#888' }}>{s.clase}</p>
+                                                            {/* AÑADIDO: whiteSpace, overflow y textOverflow en el h4 */}
+                                                            <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: esSeleccionado ? '#4CAF50' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }} title={s.nombre}>
+                                                                {s.nombre}
+                                                            </h4>
+                                                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{s.clase}</p>
                                                         </div>
                                                     );
                                                 })}
@@ -487,8 +491,12 @@ const calibrarPrestigioVeteranos = async () => {
                             
                             <div className="cabecera-tarjeta" style={{ borderBottom: 'none', paddingBottom: '0', marginBottom: '0' }}>
                                 <img className="foto-soldado" src={soldadoSeleccionado.foto || 'https://via.placeholder.com/150/323245/888888?text=Sin+Foto'} alt="Foto" style={{ borderColor: configSalud.color }} />
-                                <div className="info-principal" style={{ flex: 1 }}>
-                                    <h2 style={{ margin: '0 0 2px 0', color: configSalud.color, fontSize: '1.8rem' }}>{soldadoSeleccionado.nombre}</h2>
+                                {/* AÑADIDO: paddingRight para que no choque con los botones flotantes */}
+                                <div className="info-principal" style={{ flex: 1, paddingRight: '180px' }}>
+                                    {/* AÑADIDO: wordWrap y lineBreak para nombres extremadamente largos */}
+                                    <h2 style={{ margin: '0 0 2px 0', color: configSalud.color, fontSize: '1.8rem', wordWrap: 'break-word', overflowWrap: 'break-word', hyphens: 'auto' }}>
+                                        {soldadoSeleccionado.nombre}
+                                    </h2>
                                     <h4 style={{ margin: 0, color: '#a0a0b5', fontStyle: 'italic' }}>{soldadoSeleccionado.nombre_clave ? `"${soldadoSeleccionado.nombre_clave}"` : 'Sin alias'}</h4>
                                     <span style={{ color: '#FF9800', fontWeight: 'bold', fontSize: '0.85rem', display: 'block', marginTop: '8px' }}>
                                         {soldadoSeleccionado.rango} | {soldadoSeleccionado.clase}

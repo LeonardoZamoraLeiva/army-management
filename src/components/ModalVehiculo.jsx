@@ -10,8 +10,8 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
     const estadoInicial = {
         nombre: '', modelo: '', fabricante: '', entorno: 'Terrestre', rol: 'Transporte',
         req_rango: 1, hp: 0, ac: 0, vel: 0, armamento: '', pasajeros: 0, tripulacion: '', 
-        mod_cr: 0, foto: '',
-        propietario: esGM ? 'Global' : (userRole || 'Global') // <-- NUEVO
+        mod_cr: 0, foto: '', hiperimpulsor: 2, motor_subluz: 3, // <-- NUEVOS MOTORES
+        propietario: esGM ? 'Global' : (userRole || 'Global')
     };
     
     const [formData, setFormData] = useState(estadoInicial);
@@ -29,7 +29,8 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
             ...formData,
             categoria: 'Vehículo',
             req_rango: Number(formData.req_rango), hp: Number(formData.hp), ac: Number(formData.ac),
-            vel: Number(formData.vel), pasajeros: Number(formData.pasajeros), mod_cr: Number(formData.mod_cr)
+            vel: Number(formData.vel), pasajeros: Number(formData.pasajeros), mod_cr: Number(formData.mod_cr),
+            hiperimpulsor: Number(formData.hiperimpulsor), motor_subluz: Number(formData.motor_subluz) // <-- NUEVO
         };
 
         try {
@@ -74,7 +75,31 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
                                 <option>Transporte</option><option>Asalto</option><option>Apoyo</option><option>Exploración</option>
                             </select>
                         </div>
-
+                        <div className="grupo-input"><label>Clase Hiperimpulsor</label>
+                            <select name="hiperimpulsor" value={formData.hiperimpulsor} onChange={handleChange}>
+                                <option value="0.5">Clase 0.5 (Experimental)</option>
+                                <option value="0.8">Clase 1 (Militar Avanzado)</option>
+                                <option value="1.2">Clase 2 (Militar Estándar)</option>
+                                <option value="2.0">Clase 3 (Comercial Superior)</option>
+                                <option value="3.0">Clase 4 (Carguero Ligero)</option>
+                                <option value="4.0">Clase 5 (Comercial Inferior)</option>
+                                <option value="5.0">Clase 6 (Carguero Pesado)</option>
+                                <option value="6.0">Clase 7 (Civil Superior)</option>
+                                <option value="8.0">Clase 8 (Civil Estándar)</option>
+                            </select>
+                        </div>
+                        <div className="grupo-input"><label>Motor Dual Subluz/FTL</label>
+                            <select name="motor_subluz" value={formData.motor_subluz} onChange={handleChange}>
+                                <option value="1">1 - Inter Planetario</option>
+                                <option value="2">2 - Extra planetario</option>
+                                <option value="3">3 - Comercial Próximo</option>
+                                <option value="4">4 - Comercial Lejano</option>
+                                <option value="5">5 - Inter Sistémico</option>
+                                <option value="6">6 - Extra Sistémico</option>
+                                <option value="8">7 - Interceptor </option>
+                                <option value="10">8 - Explorador Profundo</option>
+                            </select>
+                        </div>
                         <div className="grupo-input"><label>HP (Integridad)</label><input type="number" name="hp" value={formData.hp} onChange={handleChange} required /></div>
                         <div className="grupo-input"><label>AC (Blindaje)</label><input type="number" name="ac" value={formData.ac} onChange={handleChange} required /></div>
                         <div className="grupo-input"><label>Velocidad (ft)</label><input type="number" name="vel" value={formData.vel} onChange={handleChange} /></div>

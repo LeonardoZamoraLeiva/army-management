@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
 import { calcularTREscuadron } from './Escuadrones'; 
 
@@ -29,13 +29,27 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
         e.preventDefault();
         try {
             const agregados = selectedIds.filter(id => !initialIds.includes(id));
-            const removidos = initialIds.filter(id => !selectedIds.includes(id));
 
-            for (let id of agregados) { await updateDoc(doc(db, "escuadrones", id), { estado: 'Desplegado' }); }
-            for (let id of removidos) { await updateDoc(doc(db, "escuadrones", id), { estado: 'En Base' }); }
+            // LÓGICA DE ROBO LIMPIO: Si agregamos un escuadrón, lo sacamos de cualquier otra misión "Pendiente"
+            if (agregados.length > 0) {
+                const misionesSnapshot = await getDocs(collection(db, "misiones"));
+                const todasLasMisiones = misionesSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
 
+                for (let m of todasLasMisiones) {
+                    // Si es otra misión y no está desplegada (sigue en preparativos)
+                    if (m.id !== mision.id && m.estado !== 'Desplegada') {
+                        const interseccion = agregados.filter(id => (m.escuadrones_id || []).includes(id));
+                        if (interseccion.length > 0) {
+                            const nuevosIds = (m.escuadrones_id || []).filter(id => !interseccion.includes(id));
+                            await updateDoc(doc(db, "misiones", m.id), { escuadrones_id: nuevosIds });
+                        }
+                    }
+                }
+            }
+
+            // Guardamos los escuadrones en esta misión
             await updateDoc(doc(db, "misiones", mision.id), { 
-                estado: 'Pendiente', 
+                estado: 'Pendiente', // Sigue pendiente hasta que el comandante presione "Desplegar" en el mapa
                 escuadrones_id: selectedIds,
                 escuadron_id: null 
             });
@@ -71,9 +85,10 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {escuadronesAgrupados[faccion].map(esc => {
                                             const isSelected = selectedIds.includes(esc.id);
-                                            const isOcupadoEnOtra = (esc.estado === 'Desplegado' || esc.estado === 'M.I.A.') && !initialIds.includes(esc.id);
+                                            // Un escuadrón solo está verdaderamente ocupado si su estado es Desplegado, M.I.A. o si está viajando físicamente
+                                            const isOcupadoEnOtra = (esc.estado === 'Desplegado' || esc.estado === 'M.I.A.' || esc.estado_movimiento === 'En Tránsito') && !initialIds.includes(esc.id);
                                             
-                                            // --- CÁLCULO DE PERMISOS: Solo GM o el dueño pueden asignar la tropa ---
+                                            // --- CÁLCULO DE PERMISOS ---
                                             const esMio = esGM || faccion === userRole;
                                             const disabledGeneral = isOcupadoEnOtra || !esMio;
                                             
@@ -87,7 +102,7 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
                                                             <h4 style={{ margin: 0, color: isOcupadoEnOtra ? '#666' : (isSelected ? '#9C27B0' : '#FF9800') }}>{esc.nombre}</h4>
                                                             <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#00BCD4' }}>TR: {trCalculado.toFixed(1)}</span>
                                                         </div>
-                                                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>{!esMio ? `[Comandante Externo]` : (isOcupadoEnOtra ? `[Ocupado]` : 'Disponible')}</span>
+                                                        <span style={{ fontSize: '0.75rem', color: '#aaa' }}>{!esMio ? `[Comandante Externo]` : (isOcupadoEnOtra ? `[En Operación]` : 'Disponible')}</span>
                                                     </div>
                                                 </label>
                                             );
