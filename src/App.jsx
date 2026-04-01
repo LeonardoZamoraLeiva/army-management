@@ -5,7 +5,6 @@ import Barracones from './components/Barracones';
 import Armeria from './components/Armeria';
 import Hangar from './components/Hangar';
 import Escuadrones from './components/Escuadrones';
-import Misiones from './components/Misiones';
 import ModalLogin from './components/ModalLogin'; // IMPORTAMOS EL MODAL
 import MapaEstelar from './components/MapaEstelar'; 
 
@@ -78,7 +77,6 @@ function App() {
         {vistaActiva === 'hangar' && <Hangar />}
         {vistaActiva === 'escuadrones' && <Escuadrones />}
         {vistaActiva === 'armeria' && <Armeria />}
-        {vistaActiva === 'misiones' && <Misiones />}
         {vistaActiva === 'mapa' && <MapaEstelar />}
       </main>
 

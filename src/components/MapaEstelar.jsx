@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useData } from '../context/DataContext';
 import { db } from '../firebase';
-import { updateDoc, doc, collection, onSnapshot, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { updateDoc, doc, collection, onSnapshot, deleteDoc, arrayUnion, setDoc } from 'firebase/firestore';
 import ModalPlaneta from './ModalPlaneta';
 import ModalMision from './ModalMision'; 
 import ModalDesplegar from './ModalDesplegar'; 
@@ -334,9 +334,9 @@ function TarjetaMisionGlobal({
                                             const plan = calcularPlanDeVuelo(null, m.ubicacion_id, esc.coords_espacio_profundo, planetas, nave);
                                             if (plan) { tiempoViajeEsc = plan.tiempoDias; tipoViajeEsc = `(${plan.tipo})`; }
                                         }
-                                    } else {
-                                        tiempoViajeEsc = Math.round((m.ms_viaje_ida / 60000) * 10) / 10;
-                                    }
+                                        } else {
+                                            tiempoViajeEsc = Math.round((m.ms_viaje_ida / 60000) * 10) / 10;
+                                        }
 
                                     return (
                                         <div key={esc.id} style={{ fontSize: '0.8rem', color: '#fff', borderBottom: '1px solid #222', paddingBottom: '2px' }}>
@@ -431,11 +431,95 @@ export default function MapaEstelar() {
     const [modoConexion, setModoConexion] = useState(null);
     const [escuadronSeleccionado, setEscuadronSeleccionado] = useState(null);
     const [rutaPrevisualizada, setRutaPrevisualizada] = useState(null);
-    const [relojGalactico, setRelojGalactico] = useState(Date.now());
+    const [relojGalacticoUI, setRelojGalacticoUI] = useState(Date.now()); // Para barras y textos
+    const [relojGalacticoMapa, setRelojGalacticoMapa] = useState(Date.now()); // Para el mapa y DB
     const [modoMoverPines, setModoMoverPines] = useState(false);
 
     const [isModalDesplegarOpen, setIsModalDesplegarOpen] = useState(false);
     const [misionActiva, setMisionActiva] = useState(null);
+
+    // Agrega este estado
+    const [minutosPorDia, setMinutosPorDia] = useState(1);
+    const [inputMinutos, setInputMinutos] = useState(1); 
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(doc(db, "configuracion", "tiempo_global"), (docSnap) => {
+            if (docSnap.exists()) {
+                const val = docSnap.data().minutosPorDia || 1;
+                setMinutosPorDia(val);
+                setInputMinutos(val);
+            } else {
+                // AQUI ESTÁ EL CAMBIO: setDoc con merge: true
+                setDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: 1 }, { merge: true }).catch(e => console.error("Error creando config:", e));
+            }
+        });
+        return () => unsubscribe();
+    }, []); 
+
+const aplicarNuevoTiempo = async () => {
+        const nuevoValor = Number(inputMinutos);
+        if (nuevoValor <= 0 || isNaN(nuevoValor)) return alert("Valor inválido.");
+
+        const factor = minutosPorDia > 0 ? (nuevoValor / minutosPorDia) : 1;
+        const ahora = Date.now();
+
+        // 1. Guardar la nueva escala
+        await setDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: nuevoValor }, { merge: true });
+
+        // 2. Alterar Escuadrones en tránsito (Viajes normales)
+        for (let esc of escuadrones) {
+            if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_salida && esc.fecha_llegada) {
+                const elapsed = ahora - esc.fecha_salida;
+                const restante = esc.fecha_llegada - ahora;
+
+                // Solo recalcula si el viaje no ha terminado
+                if (restante > 0) {
+                    const nuevoElapsed = elapsed * factor;
+                    const nuevoRestante = restante * factor;
+                    
+                    await updateDoc(doc(db, "escuadrones", esc.id), {
+                        fecha_salida: ahora - nuevoElapsed,
+                        fecha_llegada: ahora + nuevoRestante
+                    });
+                }
+            }
+        }
+
+        // 3. Alterar Misiones Desplegadas (Magia de reajuste temporal)
+        for (let m of misiones) {
+            if (m.estado === 'Desplegada') {
+                const updates = {};
+                updates.ms_viaje_ida = m.ms_viaje_ida * factor;
+                updates.ms_ejecucion = m.ms_ejecucion * factor;
+
+                // A. Reajustar la fase de Viaje de la misión
+                if (m.fecha_despliegue) {
+                    const elapsedViaje = ahora - m.fecha_despliegue;
+                    
+                    if (elapsedViaje < m.ms_viaje_ida) {
+                        // Aún viajando hacia la misión
+                        updates.fecha_despliegue = ahora - (elapsedViaje * factor);
+                    } else {
+                        // Ya llegó, pero la misión sigue activa.
+                        // Pivoteamos la fecha en que llegó para que no afecte el inicio de la ejecución.
+                        const tiempoDesdeLlegada = ahora - (m.fecha_despliegue + m.ms_viaje_ida);
+                        const nuevaLlegada = ahora - (tiempoDesdeLlegada * factor);
+                        updates.fecha_despliegue = nuevaLlegada - updates.ms_viaje_ida;
+                    }
+                }
+
+                // B. Reajustar la fase de Ejecución Manual (si aplica)
+                if (m.fecha_inicio_ejecucion) {
+                    const elapsedEjec = ahora - m.fecha_inicio_ejecucion;
+                    updates.fecha_inicio_ejecucion = ahora - (elapsedEjec * factor);
+                }
+
+                await updateDoc(doc(db, "misiones", m.id), updates);
+            }
+        }
+
+        alert(`⏱️ Relatividad ajustada: ${nuevoValor} min/día. Rutas recalculadas sin saltos bruscos.`);
+    };
 
     const guardarNuevasCoords = async (idPlaneta, latlng) => {
         await updateDoc(doc(db, "planetas", idPlaneta), { coords: [Math.round(latlng.lat), Math.round(latlng.lng)] });
@@ -453,9 +537,16 @@ export default function MapaEstelar() {
     }, []);
 
     useEffect(() => {
-        const int = setInterval(() => {
+        // 1. RELOJ RÁPIDO (Para la interfaz y barras de progreso)
+        const intUI = setInterval(() => {
+            setRelojGalacticoUI(Date.now());
+        }, 1000);
+
+        // 2. RELOJ LENTO (Para mover la nave en el mapa y revisar Firebase)
+        const intMapa = setInterval(() => {
             const ahora = Date.now();
-            setRelojGalactico(ahora);
+            setRelojGalacticoMapa(ahora);
+            
             escuadrones.forEach(async esc => {
                 if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_llegada <= ahora) {
                     await updateDoc(doc(db, "escuadrones", esc.id), {
@@ -466,7 +557,11 @@ export default function MapaEstelar() {
                 }
             });
         }, 5000);
-        return () => clearInterval(int);
+
+        return () => {
+            clearInterval(intUI);
+            clearInterval(intMapa);
+        };
     }, [escuadrones, recargarTodo]);
 
     const cancelarTodo = () => { setModoConexion(null); setEscuadronSeleccionado(null); setRutaPrevisualizada(null); };
@@ -556,7 +651,6 @@ const previsualizarRuta = (destino) => {
         const { mision, escuadronesDesplegados } = confirmacionDespliegue;
         const miEscuadron = escuadronesDesplegados[0];
         
-        // CORRECCIÓN TIPOS: String() para evitar el bug de "4 segundos" en el cálculo del viaje
         const enPosicion = String(miEscuadron.ubicacion_actual_id) === String(mision.ubicacion_id);
         const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(miEscuadron.nave_id)) : null;
 
@@ -565,7 +659,8 @@ const previsualizarRuta = (destino) => {
         if (!enPosicion) {
             const plan = calcularPlanDeVuelo(miEscuadron.ubicacion_actual_id, mision.ubicacion_id, miEscuadron.coords_espacio_profundo, planetas, nave);
             if (plan) {
-                msViajeIda = plan.tiempoDias * 60 * 1000;
+                // AQUÍ APLICAMOS TU MULTIPLICADOR DE TIEMPO SECRETO
+                msViajeIda = plan.tiempoDias * (minutosPorDia * 60 * 1000);
                 rutaLimpia = plan.puntos.map(p => ({ y: p.y || p.coords[0], x: p.x || p.coords[1] }));
             }
         }
@@ -581,7 +676,8 @@ const previsualizarRuta = (destino) => {
         }
 
         await updateDoc(doc(db, "misiones", mision.id), { 
-            estado: 'Desplegada', fecha_despliegue: ahora, ms_viaje_ida: msViajeIda, ms_ejecucion: (mision.tiempo_ejecucion || 1) * 60 * 1000,
+            estado: 'Desplegada', fecha_despliegue: ahora, ms_viaje_ida: msViajeIda, 
+            ms_ejecucion: (mision.tiempo_ejecucion || 1) * (minutosPorDia * 60 * 1000), // También escalamos el tiempo de combate
             auto_ejecutar: autoEjecutar, fecha_inicio_ejecucion: null 
         });
         
@@ -824,7 +920,7 @@ const previsualizarRuta = (destino) => {
                     <CapaDinamicaPlanetas planetas={planetas} escuadrones={escuadrones} misiones={misiones} planetaSelId={planetaSelId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} modoConexion={modoConexion} ejecutarConexion={ejecutarConexion} escuadronSeleccionado={escuadronSeleccionado} previsualizarRuta={previsualizarRuta} modoMoverPines={modoMoverPines} guardarNuevasCoords={guardarNuevasCoords} />
 
                     {escuadrones.filter(e => e.estado_movimiento === 'En Tránsito').map(esc => {
-                        const pos = calcularPosicionEnRuta(esc, relojGalactico);
+                        const pos = calcularPosicionEnRuta(esc, relojGalacticoMapa);
                         if (!pos) return null;
                         const coordsRuta = esc.ruta_visual ? esc.ruta_visual.map(p => [p.y, p.x]) : [];
                         const colorEstela = "#de0000"; 
@@ -833,7 +929,7 @@ const previsualizarRuta = (destino) => {
                                 {coordsRuta.length > 0 && <Polyline positions={coordsRuta} color={colorEstela} weight={3} dashArray="5, 10" className="ruta-animada" opacity={0.9} />}
                                 <CircleMarker center={pos} radius={6} pathOptions={{ color: '#fff', fillColor: colorEstela, fillOpacity: 1, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
                                     <Tooltip direction="bottom" offset={[0, 5]}>
-                                        <div style={{ textAlign: 'center' }}><strong>{esc.nombre}</strong><br/><span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>ETA: {Math.max(0, ((esc.fecha_llegada - Date.now()) / 60000)).toFixed(1)} mins</span></div>
+                                        <div style={{ textAlign: 'center' }}><strong>{esc.nombre}</strong><br/><span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>ETA: {Math.max(0, ((esc.fecha_llegada - relojGalacticoUI) / 60000)).toFixed(1)} mins</span></div>
                                     </Tooltip>
                                 </CircleMarker>
                             </div>
@@ -847,6 +943,29 @@ const previsualizarRuta = (destino) => {
                     ))}
                 </MapContainer>
 
+                {/* BOTÓN SECRETO DEL GM PARA EL TIEMPO */}
+                {esGM && (
+                    <div style={{ backgroundColor: '#0a0a0f', padding: '10px', display: 'flex', justifyContent: 'flex-end', borderRight: '2px solid #1a1a2e' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#1a1a24', padding: '5px 15px', borderRadius: '4px', border: '1px solid #3f3f5a' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#aaa' }}>⏱️ 1 Día de viaje =</span>
+                            <input 
+                                type="number" 
+                                min="0.1" 
+                                step="0.1" 
+                                value={inputMinutos} 
+                                onChange={(e) => setInputMinutos(e.target.value)}
+                                style={{ width: '60px', backgroundColor: '#000', color: '#00BCD4', border: '1px solid #00BCD4', borderRadius: '3px', padding: '2px 5px', textAlign: 'center', fontWeight: 'bold' }}
+                            />
+                            <span style={{ fontSize: '0.8rem', color: '#aaa' }}>minutos reales (1 día = 1440 min)</span>
+                            <button 
+                                onClick={aplicarNuevoTiempo}
+                                style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '4px 10px', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
+                            >
+                                Actualizar Rutas
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* HUD Flotante de Movimiento */}
                 {escuadronSeleccionado && (
@@ -921,7 +1040,7 @@ const previsualizarRuta = (destino) => {
                             {pestanaGlobal === 'misiones' && (
                                 misionesFiltradas.length === 0 ? <p style={{ textAlign: 'center', color: '#555', marginTop: '40px', fontStyle: 'italic' }}>No hay contratos con esos filtros.</p>
                                 : misionesFiltradas.map(m => (
-                                    <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalactico} isGlobalContext={true} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />
+                                    <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalacticoUI} isGlobalContext={true} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />
                                 ))
                             )}
                             {pestanaGlobal === 'escuadrones' && (
@@ -989,9 +1108,25 @@ const previsualizarRuta = (destino) => {
                                         <p style={{ fontSize: '0.8rem', color: '#555' }}>No hay operaciones activas aquí.</p>
                                     ) : (
                                         misiones.filter(m => String(m.ubicacion_id) === String(planetaSel.id)).map(m => (
-                                            <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalactico} isGlobalContext={false} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />                                        
+                                            <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalacticoUI} isGlobalContext={false} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />                                        
                                         ))
                                     )}
+                                    {/* BOTÓN EXCLUSIVO DEL GM PARA CREAR CONTRATO AQUÍ */}
+                                    {esGM && (
+                                        <button 
+                                            onClick={() => { 
+                                                // Si tu ModalMision acepta que le pases el ID del planeta para pre-seleccionarlo, puedes usar:
+                                                setMisionParaEditar({ ubicacion_id: planetaSel.id }); 
+                                                // Si falla porque cree que estás editando una misión, usa null como estaba antes:
+                                                // setMisionParaEditar(null); 
+                                                setIsModalMisionOpen(true); 
+                                            }} 
+                                            style={{ backgroundColor: '#F44336', color: '#fff', border: 'none', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                            title={`Crear contrato en ${planetaSel.nombre}`}
+                                        >
+                                            + Nuevo Contrato
+                                    </button>
+                                )}
                                 </div>
 
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>

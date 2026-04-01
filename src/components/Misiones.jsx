@@ -69,6 +69,25 @@ export default function Misiones() {
     const [alertaAborto, setAlertaAborto] = useState(null);
     const [confirmacionDespliegue, setConfirmacionDespliegue] = useState(null);
 
+    // Agrega este estado
+    const [minutosPorDia, setMinutosPorDia] = useState(1);
+
+    // Agrega este useEffect para escuchar la configuración del GM
+    useEffect(() => {
+        const unsubscribe = onSnapshot(doc(db, "configuracion", "tiempo_global"), (docSnap) => {
+            if (docSnap.exists()) {
+                setMinutosPorDia(docSnap.data().minutosPorDia || 1);
+            } else {
+                // Si el documento no existe aún en Firebase, lo crea con 1 minuto por defecto
+                updateDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: 1 }).catch(e => {
+                    // Si falla (ej. permisos), ignoramos y usamos 1
+                });
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
+
     const esGM = userRole === 'GM';
     const esInvitado = !userRole || userRole === 'Espectador';
 
@@ -123,61 +142,38 @@ export default function Misiones() {
     const ejecutarDespliegue = async (autoEjecutar) => {
         const { mision, escuadronesDesplegados } = confirmacionDespliegue;
         const miEscuadron = escuadronesDesplegados[0];
-        const enPosicion = miEscuadron.ubicacion_actual_id === mision.ubicacion_id;
+        
+        const enPosicion = String(miEscuadron.ubicacion_actual_id) === String(mision.ubicacion_id);
         const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(miEscuadron.nave_id)) : null;
 
-        let msViajeIda = 0;
-        let rutaLimpia = null;
-        const ahora = Date.now();
+        let msViajeIda = 0; let rutaLimpia = null; const ahora = Date.now();
 
         if (!enPosicion) {
-            let tiempoDias = 0;
-            if (miEscuadron.ubicacion_actual_id) {
-                const ruta = encontrarRutaOptima(miEscuadron.ubicacion_actual_id, mision.ubicacion_id, planetas, nave);
-                if (ruta) {
-                    tiempoDias = ruta.tiempoDias;
-                    rutaLimpia = ruta.puntos.map(p => ({ y: p.coords[0], x: p.coords[1] }));
-                }
-            } else if (miEscuadron.coords_espacio_profundo) {
-                const coordsOrigen = [miEscuadron.coords_espacio_profundo.y, miEscuadron.coords_espacio_profundo.x];
-                const dest = planetas.find(p => p.id === mision.ubicacion_id);
-                const dist = calcularDistanciaPitagorica(coordsOrigen, dest.coords);
-                let velEspacioProfundo = 0.5; 
-                if (nave) velEspacioProfundo = 1.25 * ((Number(nave.motor_subluz) || 3) / 5); 
-                tiempoDias = Math.round((dist / velEspacioProfundo) * 10) / 10;
-                rutaLimpia = [ {y: coordsOrigen[0], x: coordsOrigen[1]}, {y: dest.coords[0], x: dest.coords[1]} ];
+            const plan = calcularPlanDeVuelo(miEscuadron.ubicacion_actual_id, mision.ubicacion_id, miEscuadron.coords_espacio_profundo, planetas, nave);
+            if (plan) {
+                // AQUÍ APLICAMOS TU MULTIPLICADOR DE TIEMPO SECRETO
+                msViajeIda = plan.tiempoDias * (minutosPorDia * 60 * 1000);
+                rutaLimpia = plan.puntos.map(p => ({ y: p.y || p.coords[0], x: p.x || p.coords[1] }));
             }
-            msViajeIda = tiempoDias * 60 * 1000; 
         }
 
         const msLlegada = ahora + msViajeIda;
-        const asignadosIds = mision.escuadrones_id || [];
-
-        for (let id of asignadosIds) {
+        for (let id of mision.escuadrones_id || []) {
             const updateData = { estado: 'Desplegado' };
             if (!enPosicion) {
-                updateData.estado_movimiento = 'En Tránsito';
-                updateData.ubicacion_destino_id = mision.ubicacion_id;
-                updateData.ubicacion_actual_id = null;
-                updateData.coords_espacio_profundo = null;
-                updateData.fecha_salida = ahora;
-                updateData.fecha_llegada = msLlegada;
-                updateData.ruta_visual = rutaLimpia;
+                updateData.estado_movimiento = 'En Tránsito'; updateData.ubicacion_destino_id = mision.ubicacion_id; updateData.ubicacion_actual_id = null;
+                updateData.coords_espacio_profundo = null; updateData.fecha_salida = ahora; updateData.fecha_llegada = msLlegada; updateData.ruta_visual = rutaLimpia;
             }
             await updateDoc(doc(db, "escuadrones", id), updateData);
         }
 
         await updateDoc(doc(db, "misiones", mision.id), { 
-            estado: 'Desplegada', 
-            fecha_despliegue: ahora, 
-            ms_viaje_ida: msViajeIda,
-            ms_ejecucion: (mision.tiempo_ejecucion || 1) * 60 * 1000,
-            auto_ejecutar: autoEjecutar,
-            fecha_inicio_ejecucion: null // Se llena si no es auto_ejecutar
+            estado: 'Desplegada', fecha_despliegue: ahora, ms_viaje_ida: msViajeIda, 
+            ms_ejecucion: (mision.tiempo_ejecucion || 1) * (minutosPorDia * 60 * 1000), // También escalamos el tiempo de combate
+            auto_ejecutar: autoEjecutar, fecha_inicio_ejecucion: null 
         });
         
-        setConfirmacionDespliegue(null);
-        await recargarTodo();
+        setConfirmacionDespliegue(null); recargarTodo();
     };
 
     const iniciarEjecucionManual = async (misionId) => {
