@@ -3,6 +3,11 @@ import { useData } from '../context/DataContext';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ModalEquipo from './ModalEquipo';
+import CarruselHorizontal from './CarruselHorizontal'; 
+
+import { RiSwordLine } from 'react-icons/ri';
+import { GiAbdominalArmor, GiSchoolBag, GiPistolGun, GiBowieKnife, GiHelmet, GiBreastplate, GiPauldrons, GiLeatherBoot, GiBackpack, GiBeltArmor, GiNecklaceDisplay, GiRing, GiWoodenCrate } from 'react-icons/gi';
+import { FaCog } from 'react-icons/fa'; 
 
 const REQ_NIVEL = {
     'arma': 1, 'armadura': 1, 'util1': 1, 'util2': 1,
@@ -23,10 +28,20 @@ const SLOTS_MANIQUI = [
     { id: 'botas', tipo: 'Armadura_Botas', top: '75%', left: '50%' }
 ];
 
-const RAREZA_CLASES = { 'Común': 'rareza-comun', 'Poco Común': 'rareza-poco-comun', 'Raro': 'rareza-raro', 'Muy Raro': 'rareza-muy-raro', 'Legendario': 'rareza-legendario' };
+const ICONO_TIPO = {
+    'Arma_Principal': GiPistolGun, 'Arma_Secundaria': GiBowieKnife,
+    'Armadura_Cabeza': GiHelmet, 'Armadura_Pecho': GiBreastplate,
+    'Armadura_Hombros': GiPauldrons, 'Armadura_Botas': GiLeatherBoot,
+    'Utilidad_Mochila': GiBackpack, 'Utilidad_Cinturon': GiBeltArmor,
+    'Utilidad_Amuleto': GiNecklaceDisplay, 'Utilidad_Anillo': GiRing
+};
+
+const COLOR_RAREZA = {
+    'Común': '#aaa', 'Poco Común': '#4CAF50', 'Raro': '#00BCD4', 
+    'Muy Raro': '#9C27B0', 'Legendario': '#FF9800'
+};
 
 export default function Armeria() {
-    // EXTRAEMOS LA SESIÓN (user, userRole)
     const { soldados, escuadrones, equipo, recargarTodo, user, userRole } = useData();
     const [filtro, setFiltro] = useState('Arma');
     const [soldadoId, setSoldadoId] = useState('');
@@ -34,31 +49,23 @@ export default function Armeria() {
     const [filtroNombre, setFiltroNombre] = useState('');
     const [filtroComandante, setFiltroComandante] = useState('');
     const [filtroEscuadron, setFiltroEscuadron] = useState('');
+    const [ocultarAgotados, setOcultarAgotados] = useState(false);
 
     const [draggedItemId, setDraggedItemId] = useState(null);
     const [draggedType, setDraggedType] = useState(null);
-    const [dragTargetId, setDragTargetId] = useState(null);
-    const [dropPos, setDropPos] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [equipoAEditar, setEquipoAEditar] = useState(null);
-    const [gruposColapsados, setGruposColapsados] = useState({});
+    
+    const [gruposColapsados, setGruposColapsados] = useState({ r1: true, r2: true, r3: true, r4: true, r5: true });
+    const [hoverInfo, setHoverInfo] = useState(null);
 
     useEffect(() => {
         const revisarAtajos = () => {
             const targetSoldado = localStorage.getItem('armeria_target_soldado');
             const targetEscuadron = localStorage.getItem('armeria_target_escuadron');
-            
-            if (targetSoldado) {
-                setSoldadoId(targetSoldado);
-                localStorage.removeItem('armeria_target_soldado');
-            }
-            if (targetEscuadron) {
-                setFiltroEscuadron(targetEscuadron);
-                setSoldadoId(''); 
-                localStorage.removeItem('armeria_target_escuadron');
-            }
+            if (targetSoldado) { setSoldadoId(targetSoldado); localStorage.removeItem('armeria_target_soldado'); }
+            if (targetEscuadron) { setFiltroEscuadron(targetEscuadron); setSoldadoId(''); localStorage.removeItem('armeria_target_escuadron'); }
         };
-
         revisarAtajos();
         window.addEventListener('salto_armeria', revisarAtajos);
         return () => window.removeEventListener('salto_armeria', revisarAtajos);
@@ -68,10 +75,8 @@ export default function Armeria() {
     const nvEfectivo = soldadoActual ? (Number(soldadoActual.nivel) || 1) : 1;
     const loadout = soldadoActual?.equipo || {};
 
-    // --- VARIABLES DE SEGURIDAD ---
     const esGM = userRole === 'GM';
     const esInvitado = !user;
-    // ¿Puede tocar a este soldado específico? Solo si es GM o si es suyo.
     const puedeEditar = esGM || (userRole && soldadoActual?.lider === userRole);
 
     const comandantesUnicos = [...new Set(soldados.map(s => s.lider || 'Libres'))];
@@ -79,51 +84,77 @@ export default function Armeria() {
     const soldadosFiltrados = soldados.filter(s => {
         const matchNombre = s.nombre.toLowerCase().includes(filtroNombre.toLowerCase()) || (s.nombre_clave && s.nombre_clave.toLowerCase().includes(filtroNombre.toLowerCase()));
         const matchComandante = filtroComandante === '' || (s.lider || 'Libres') === filtroComandante;
-        
         const escAlQuePertenece = escuadrones.find(e => e.lider_id === s.id || (e.miembros && e.miembros.includes(s.id)));
-        const matchEscuadron = filtroEscuadron === '' || (
-            filtroEscuadron === 'reserva' ? !escAlQuePertenece : escAlQuePertenece?.id === filtroEscuadron 
-        );
+        const matchEscuadron = filtroEscuadron === '' || (filtroEscuadron === 'reserva' ? !escAlQuePertenece : escAlQuePertenece?.id === filtroEscuadron);
         return matchNombre && matchComandante && matchEscuadron;
     });
 
-    const getCount = (tipo) => equipo.filter(e => e.tipo === tipo).length;
-    const getRarezaCount = (prefix, rareza) => equipo.filter(e => e.tipo.startsWith(prefix) && (e.rareza || 'Común') === rareza).length;
+    const inventarioFiltradoGlobal = equipo.filter(eq => {
+        if (esGM) return true; 
+        if (eq.propietario === 'GM') return false; 
+        if (esInvitado || !eq.propietario || eq.propietario === 'Global') return true; 
+        return eq.propietario === userRole; 
+    });
+    
+    const inventarioPestaña = inventarioFiltradoGlobal
+        .filter(eq => eq.tipo.startsWith(filtro + '_') && (!ocultarAgotados || eq.stock > 0))
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+
+    const getStat = (conditionFn) => {
+        const publicos = equipo.filter(e => conditionFn(e) && e.propietario !== 'GM').length;
+        const ocultosGM = equipo.filter(e => conditionFn(e) && e.propietario === 'GM').length;
+        return { p: publicos, gm: ocultosGM };
+    };
 
     const statsHome = {
         armas: { 
-            total: equipo.filter(e => e.tipo.startsWith('Arma')).length, 
-            principal: getCount('Arma_Principal'), secundaria: getCount('Arma_Secundaria'),
-            rareza: { comun: getRarezaCount('Arma', 'Común'), poco_comun: getRarezaCount('Arma', 'Poco Común'), raro: getRarezaCount('Arma', 'Raro'), muy_raro: getRarezaCount('Arma', 'Muy Raro'), legendario: getRarezaCount('Arma', 'Legendario') }
+            total: getStat(e => e.tipo.startsWith('Arma')),
+            rareza: { 
+                comun: getStat(e => e.tipo.startsWith('Arma') && (e.rareza || 'Común') === 'Común'), 
+                poco_comun: getStat(e => e.tipo.startsWith('Arma') && e.rareza === 'Poco Común'), 
+                raro: getStat(e => e.tipo.startsWith('Arma') && e.rareza === 'Raro'), 
+                muy_raro: getStat(e => e.tipo.startsWith('Arma') && e.rareza === 'Muy Raro'), 
+                legendario: getStat(e => e.tipo.startsWith('Arma') && e.rareza === 'Legendario') 
+            }
         },
         armaduras: { 
-            total: equipo.filter(e => e.tipo.startsWith('Armadura')).length, 
-            cabeza: getCount('Armadura_Cabeza'), pecho: getCount('Armadura_Pecho'), hombros: getCount('Armadura_Hombros'), botas: getCount('Armadura_Botas'),
-            rareza: { comun: getRarezaCount('Armadura', 'Común'), poco_comun: getRarezaCount('Armadura', 'Poco Común'), raro: getRarezaCount('Armadura', 'Raro'), muy_raro: getRarezaCount('Armadura', 'Muy Raro'), legendario: getRarezaCount('Armadura', 'Legendario') }
+            total: getStat(e => e.tipo.startsWith('Armadura')),
+            rareza: { 
+                comun: getStat(e => e.tipo.startsWith('Armadura') && (e.rareza || 'Común') === 'Común'), 
+                poco_comun: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Poco Común'), 
+                raro: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Raro'), 
+                muy_raro: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Muy Raro'), 
+                legendario: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Legendario') 
+            }
         },
         utilidad: { 
-            total: equipo.filter(e => e.tipo.startsWith('Utilidad')).length, 
-            mochila: getCount('Utilidad_Mochila'), cinturon: getCount('Utilidad_Cinturon'), amuleto: getCount('Utilidad_Amuleto'), anillo: getCount('Utilidad_Anillo'),
-            rareza: { comun: getRarezaCount('Utilidad', 'Común'), poco_comun: getRarezaCount('Utilidad', 'Poco Común'), raro: getRarezaCount('Utilidad', 'Raro'), muy_raro: getRarezaCount('Utilidad', 'Muy Raro'), legendario: getRarezaCount('Utilidad', 'Legendario') }
+            total: getStat(e => e.tipo.startsWith('Utilidad')),
+            rareza: { 
+                comun: getStat(e => e.tipo.startsWith('Utilidad') && (e.rareza || 'Común') === 'Común'), 
+                poco_comun: getStat(e => e.tipo.startsWith('Utilidad') && e.rareza === 'Poco Común'), 
+                raro: getStat(e => e.tipo.startsWith('Utilidad') && e.rareza === 'Raro'), 
+                muy_raro: getStat(e => e.tipo.startsWith('Utilidad') && e.rareza === 'Muy Raro'), 
+                legendario: getStat(e => e.tipo.startsWith('Utilidad') && e.rareza === 'Legendario') 
+            }
         }
     };
 
-    // --- FILTRADO DE EQUIPO POR PROPIETARIO ---
-    // Si eres GM o Invitado ves todo. Si eres jugador, ves Global y lo tuyo.
-    const inventarioFiltrado = equipo.filter(eq => 
-        eq.tipo.startsWith(filtro + '_') &&
-        (esGM || esInvitado || !eq.propietario || eq.propietario === 'Global' || eq.propietario === userRole)
-    ).sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    const renderCount = (statObj) => (
+        <span>
+            {statObj.p} 
+            {esGM && statObj.gm > 0 && <span style={{ color: '#666', fontSize: '0.85em', marginLeft: '4px' }}>({statObj.gm})</span>}
+        </span>
+    );
 
     const gruposTR = [
-        { id: 'r1', nombre: 'Común', color: '#aaa', items: inventarioFiltrado.filter(e => (e.rareza || 'Común') === 'Común') },
-        { id: 'r2', nombre: 'Poco Común', color: '#4CAF50', items: inventarioFiltrado.filter(e => e.rareza === 'Poco Común') },
-        { id: 'r3', nombre: 'Raro', color: '#00BCD4', items: inventarioFiltrado.filter(e => e.rareza === 'Raro') },
-        { id: 'r4', nombre: 'Muy Raro', color: '#9C27B0', items: inventarioFiltrado.filter(e => e.rareza === 'Muy Raro') },
-        { id: 'r5', nombre: 'Legendario', color: '#FF9800', items: inventarioFiltrado.filter(e => e.rareza === 'Legendario') }
+        { id: 'r1', nombre: 'Común', color: '#aaa', items: inventarioPestaña.filter(e => (e.rareza || 'Común') === 'Común') },
+        { id: 'r2', nombre: 'Poco Común', color: '#4CAF50', items: inventarioPestaña.filter(e => e.rareza === 'Poco Común') },
+        { id: 'r3', nombre: 'Raro', color: '#00BCD4', items: inventarioPestaña.filter(e => e.rareza === 'Raro') },
+        { id: 'r4', nombre: 'Muy Raro', color: '#9C27B0', items: inventarioPestaña.filter(e => e.rareza === 'Muy Raro') },
+        { id: 'r5', nombre: 'Legendario', color: '#FF9800', items: inventarioPestaña.filter(e => e.rareza === 'Legendario') }
     ];
 
-    let trTotal = nvEfectivo;
+    let trTotal = nvEfectivo/5;
     let habilidadesEspeciales = [];
     if (soldadoActual) {
         Object.values(loadout).forEach(itemId => {
@@ -135,26 +166,15 @@ export default function Armeria() {
         });
     }
 
-    const clearDrag = () => { setDraggedItemId(null); setDraggedType(null); setDragTargetId(null); setDropPos(null); };
+    const clearDrag = () => { setDraggedItemId(null); setDraggedType(null); };
     
-    // BLOQUEAMOS LA ESCRITURA DRAG & DROP
     const handleDragStartInv = (e, item) => { 
         if (!puedeEditar && !esGM) { e.preventDefault(); return; }
-        setDraggedItemId(item.id); setDraggedType(item.tipo); e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemTipo', item.tipo); 
+        setDraggedItemId(item.id); setDraggedType(item.tipo); 
+        e.dataTransfer.setData('itemId', item.id); e.dataTransfer.setData('itemTipo', item.tipo); 
+        setHoverInfo(null);
     };
-    const handleDragOverInv = (e, targetItem) => { if(!esGM) return; e.preventDefault(); if (draggedItemId === targetItem.id) return; const rect = e.currentTarget.getBoundingClientRect(); const mouseX = e.clientX - rect.left; setDragTargetId(targetItem.id); setDropPos(mouseX < rect.width / 2 ? 'left' : 'right'); };
     
-    const handleDropInv = async (e, targetItem) => {
-        e.preventDefault(); if(!esGM) return; 
-        const draggedId = e.dataTransfer.getData('itemId');
-        if (targetItem && draggedId !== targetItem.id) {
-            const orderB = targetItem.orden || 0;
-            await updateDoc(doc(db, "equipo", draggedId), { orden: dropPos === 'left' ? orderB - 0.1 : orderB + 0.1 });
-            await recargarTodo();
-        }
-        clearDrag();
-    };
-
     const handleDropManiqui = async (e, slotId, tipoEsperado) => {
         e.preventDefault(); clearDrag(); 
         if (!puedeEditar) return alert("Seguridad: No puedes equipar a un soldado que no pertenece a tu facción.");
@@ -193,22 +213,37 @@ export default function Armeria() {
         const itemObj = itemId ? equipo.find(e => e.id === itemId) : null;
         const style = id.includes('util') ? {} : { top, left, transform: 'translateX(-50%)' };
         const esObjetivoValido = draggedType === tipo && !bloqueado && puedeEditar;
-        const claseRareza = itemObj ? RAREZA_CLASES[itemObj.rareza || 'Común'] : '';
-
-        let tooltipText = bloqueado ? `Requiere Nvl ${REQ_NIVEL[id]}` : 'Ranura Vacía';
-        if (itemObj) {
-            tooltipText = `[${itemObj.rareza || 'Común'}] ${itemObj.nombre}\nTR: +${itemObj.mod_cr || 0}\n${itemObj.descripcion}`;
-            if (itemObj.habilidad) tooltipText += `\n✨ Perk: ${itemObj.habilidad}`;
-            if (itemObj.reduccion_dmg) tooltipText += `\n🛡️ Prevención: -${itemObj.reduccion_dmg}% Heridas`;
-        }
+        
+        let hexColor = '#3f3f5a';
+        if (itemObj) hexColor = COLOR_RAREZA[itemObj.rareza || 'Común'];
+        const IconoManiqui = itemObj ? (ICONO_TIPO[itemObj.tipo] || GiWoodenCrate) : null;
 
         return (
-            <div key={id} id={`slot-${id}`} className={`d3-slot ${claseRareza} ${bloqueado ? 'locked' : 'unlocked'} ${id.includes('util') ? 'static' : ''} ${esObjetivoValido ? 'highlight-valid' : ''}`} style={style} data-tooltip={tooltipText} data-equipped-id={itemId || ''} onDragOver={e => e.preventDefault()} onDrop={e => handleDropManiqui(e, id, tipo)} onDoubleClick={() => desequipar(id)}>
+            <div 
+                key={id} id={`slot-${id}`} 
+                className={`d3-slot ${bloqueado ? 'locked' : 'unlocked'} ${id.includes('util') ? 'static' : ''} ${esObjetivoValido ? 'highlight-valid' : ''}`} 
+                style={{...style, border: itemObj ? `2px solid ${hexColor}` : '2px dashed #3f3f5a', boxShadow: itemObj ? `inset 0 0 15px ${hexColor}44` : 'none'}} 
+                onDragOver={e => e.preventDefault()} 
+                onDrop={e => handleDropManiqui(e, id, tipo)} 
+                onDoubleClick={() => desequipar(id)}
+                onMouseEnter={(e) => {
+                    if (itemObj) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoverInfo({ eq: itemObj, x: rect.left + rect.width / 2, y: rect.bottom + 10, color: hexColor });
+                    }
+                }}
+                onMouseLeave={() => setHoverInfo(null)}
+            >
                 {itemObj && ( 
                     <> 
-                        <img src={itemObj.foto || '/assets/slot-vacio.png'} alt="item" /> 
-                        {/* OCULTAMOS LA EQUIS SI NO TIENE PERMISO */}
-                        {puedeEditar && <div className="btn-quitar-item" onClick={(e) => { e.stopPropagation(); desequipar(id); }}>✖</div>}
+                        {itemObj.foto ? (
+                            <img src={itemObj.foto} alt="item" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> 
+                        ) : (
+                            <div style={{ fontSize: '1.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff', filter: `drop-shadow(0 0 5px ${hexColor})` }}>
+                                <IconoManiqui />
+                            </div>
+                        )}
+                        {puedeEditar && <div className="btn-quitar-item" onClick={(e) => { e.stopPropagation(); desequipar(id); setHoverInfo(null); }}>✖</div>}
                     </> 
                 )}
             </div>
@@ -218,87 +253,183 @@ export default function Armeria() {
     return (
         <div style={{ display: 'flex', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
             
+            {/* PORTAL HOLOGRÁFICO DEL TOOLTIP */}
+            {hoverInfo && (
+                <div style={{
+                    position: 'fixed', top: hoverInfo.y, left: hoverInfo.x, transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(10, 10, 15, 0.95)', border: `1px solid ${hoverInfo.color}`,
+                    borderRadius: '6px', padding: '10px', width: '180px', zIndex: 999999,
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.8)', pointerEvents: 'none', textAlign: 'left',
+                    animation: 'fadeIn 0.1s ease'
+                }}>
+                    <div style={{ color: hoverInfo.color, fontSize: '0.65rem', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '4px', borderBottom: '1px solid #333', paddingBottom: '2px' }}>
+                        [{hoverInfo.eq.rareza || 'COMÚN'}]
+                    </div>
+                    <div style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '4px' }}>{hoverInfo.eq.nombre}</div>
+                    {hoverInfo.eq.propietario !== 'Global' && <div style={{ color: '#FFC107', fontSize: '0.65rem', marginBottom: '4px' }}>👑 Dueño: {hoverInfo.eq.propietario}</div>}
+                    <div style={{ color: '#00BCD4', fontSize: '0.75rem' }}>⚔️ TR Mod: +{hoverInfo.eq.mod_cr || 0}</div>
+                    {hoverInfo.eq.habilidad && <div style={{ color: '#FF9800', fontSize: '0.7rem', marginTop: '2px' }}>✨ Perk: {hoverInfo.eq.habilidad}</div>}
+                    {hoverInfo.eq.reduccion_dmg > 0 && <div style={{ color: '#4CAF50', fontSize: '0.7rem', marginTop: '2px' }}>🛡️ Defensa: {hoverInfo.eq.reduccion_dmg}%</div>}
+                    {hoverInfo.eq.descripcion && <div style={{ color: '#aaa', fontSize: '0.65rem', marginTop: '6px', fontStyle: 'italic', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>"{hoverInfo.eq.descripcion}"</div>}
+                </div>
+            )}
+
             <div style={{ flex: 1, maxWidth: '400px' }}>
-                
                 <div className="panel-acciones" style={{ borderTop: '5px solid #00BCD4', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#00BCD4' }}>Inventario Base</h2>
-                    
                     {esGM && (
                         <button className="btn-reclutar-mini" style={{ backgroundColor: '#00BCD4' }} onClick={() => { setEquipoAEditar(null); setIsModalOpen(true); }}><span className="icono">+</span><span className="texto">Forjar</span></button>
                     )}
                 </div>
                 
-                <div className="mini-tabs">
-                    {['Arma', 'Armadura', 'Utilidad'].map(f => ( <button key={f} className={`mini-tab-btn ${filtro === f ? 'activo' : ''}`} onClick={() => setFiltro(f)}>{f}</button> ))}
-                </div>
-                                        <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                            <div className="categoria-item" style={{ textAlign: 'center', background: '#111118', padding: '10px 5px', borderRadius: '8px', border: '1px dashed #FF9800', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'center' }}>
-                                
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px 8px', flexWrap: 'wrap', fontSize: '0.7rem' }}>
-                                    <span style={{color: '#aaa', width: '55px', textAlign: 'right', marginRight: '5px'}}><strong>Weapons</strong></span>
-                                    <span style={{color: '#aaa'}}>Common: <strong>{statsHome.armas.rareza.comun}</strong></span>
-                                    <span style={{color: '#4CAF50'}}>Uncommon: <strong>{statsHome.armas.rareza.poco_comun}</strong></span>
-                                    <span style={{color: '#00BCD4'}}>Rare: <strong>{statsHome.armas.rareza.raro}</strong></span>
-                                    <span style={{color: '#9C27B0'}}>Very Rare: <strong>{statsHome.armas.rareza.muy_raro}</strong></span>
-                                    <span style={{color: '#FF9800'}}>Legendary: <strong>{statsHome.armas.rareza.legendario}</strong></span>
-                                </div>
-                                
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px 8px', flexWrap: 'wrap', fontSize: '0.7rem' }}>
-                                    <span style={{color: '#aaa', width: '55px', textAlign: 'right', marginRight: '5px'}}><strong>Armor</strong></span>
-                                    <span style={{color: '#aaa'}}>Common: <strong>{statsHome.armaduras.rareza.comun}</strong></span>
-                                    <span style={{color: '#4CAF50'}}>Uncommon: <strong>{statsHome.armaduras.rareza.poco_comun}</strong></span>
-                                    <span style={{color: '#00BCD4'}}>Rare: <strong>{statsHome.armaduras.rareza.raro}</strong></span>
-                                    <span style={{color: '#9C27B0'}}>Very Rare: <strong>{statsHome.armaduras.rareza.muy_raro}</strong></span>
-                                    <span style={{color: '#FF9800'}}>Legendary: <strong>{statsHome.armaduras.rareza.legendario}</strong></span>
-                                </div>
-                                
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px 8px', flexWrap: 'wrap', fontSize: '0.7rem' }}>
-                                    <span style={{color: '#aaa', width: '55px', textAlign: 'right', marginRight: '5px'}}><strong>Others</strong></span>
-                                    <span style={{color: '#aaa'}}>Common: <strong>{statsHome.utilidad.rareza.comun}</strong></span>
-                                    <span style={{color: '#4CAF50'}}>Uncommon: <strong>{statsHome.utilidad.rareza.poco_comun}</strong></span>
-                                    <span style={{color: '#00BCD4'}}>Rare: <strong>{statsHome.utilidad.rareza.raro}</strong></span>
-                                    <span style={{color: '#9C27B0'}}>Very Rare: <strong>{statsHome.utilidad.rareza.muy_raro}</strong></span>
-                                    <span style={{color: '#FF9800'}}>Legendary: <strong>{statsHome.utilidad.rareza.legendario}</strong></span>
-                                </div>
-
+                <div style={{ backgroundColor: '#0b0f19', border: '1px solid #1a2235', borderRadius: '8px', padding: '15px', marginBottom: '15px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a2235', paddingBottom: '5px', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0, color: '#8892b0', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>📊 Categoría</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#00BCD4', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                <input type="checkbox" checked={ocultarAgotados} onChange={(e) => setOcultarAgotados(e.target.checked)} />
+                                Stock Disp.
+                            </label>
+                            {esGM && <span style={{color: '#666', fontSize: '0.8rem'}}>Público(GM)</span>}
+                        </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                        
+                        <div onClick={() => setFiltro('Arma')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Arma' ? '#F44336' : '#333'}`, boxShadow: filtro === 'Arma' ? '0 0 15px rgba(244, 67, 54, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Arma' ? 1 : 0.5 }}>
+                            <div style={{ color: filtro === 'Arma' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{display: 'flex', alignItems: 'center'}}><RiSwordLine style={{marginRight: '4px'}}/> Arma</span><span style={{ color: filtro === 'Arma' ? '#F44336' : '#555' }}>{renderCount(statsHome.armas.total)}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#4CAF50' }}>P. Común:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.poco_comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#00BCD4' }}>Raro:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9C27B0' }}>M. Raro:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.muy_raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FF9800' }}>Leyenda:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.legendario)}</strong></div>
                             </div>
                         </div>
-                <div className="contenedor-lideres" style={{ height: '580px', overflowY: 'auto', paddingRight: '5px' }}>
+
+                        <div onClick={() => setFiltro('Armadura')} style={{ backgroundColor: '#111118', padding: '5px',borderRadius: '6px', borderTop: `3px solid ${filtro === 'Armadura' ? '#00BCD4' : '#333'}`, boxShadow: filtro === 'Armadura' ? '0 0 15px rgba(0, 188, 212, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Armadura' ? 1 : 0.5 }}>
+                            <div style={{ color: filtro === 'Armadura' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{display: 'flex', alignItems: 'center'}}><GiAbdominalArmor style={{marginRight: '4px'}} /> Armadura</span><span style={{ color: filtro === 'Armadura' ? '#00BCD4' : '#555' }}>{renderCount(statsHome.armaduras.total)}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Armadura' ? '#fff' : '#666' }}>{renderCount(statsHome.armaduras.rareza.comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#4CAF50' }}>P. Común:</span> <strong style={{ color: filtro === 'Armadura' ? '#fff' : '#666' }}>{renderCount(statsHome.armaduras.rareza.poco_comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#00BCD4' }}>Raro:</span> <strong style={{ color: filtro === 'Armadura' ? '#fff' : '#666' }}>{renderCount(statsHome.armaduras.rareza.raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9C27B0' }}>M. Raro:</span> <strong style={{ color: filtro === 'Armadura' ? '#fff' : '#666' }}>{renderCount(statsHome.armaduras.rareza.muy_raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FF9800' }}>Leyenda:</span> <strong style={{ color: filtro === 'Armadura' ? '#fff' : '#666' }}>{renderCount(statsHome.armaduras.rareza.legendario)}</strong></div>
+                            </div>
+                        </div>
+
+                        <div onClick={() => setFiltro('Utilidad')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Utilidad' ? '#4CAF50' : '#333'}`, boxShadow: filtro === 'Utilidad' ? '0 0 15px rgba(76, 175, 80, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Utilidad' ? 1 : 0.5 }}>
+                            <div style={{ color: filtro === 'Utilidad' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{display: 'flex', alignItems: 'center'}}><GiSchoolBag style={{marginRight: '4px'}}/> Utilidad</span><span style={{ color: filtro === 'Utilidad' ? '#4CAF50' : '#555' }}>{renderCount(statsHome.utilidad.total)}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.75rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Utilidad' ? '#fff' : '#666' }}>{renderCount(statsHome.utilidad.rareza.comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#4CAF50' }}>P. Común:</span> <strong style={{ color: filtro === 'Utilidad' ? '#fff' : '#666' }}>{renderCount(statsHome.utilidad.rareza.poco_comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#00BCD4' }}>Raro:</span> <strong style={{ color: filtro === 'Utilidad' ? '#fff' : '#666' }}>{renderCount(statsHome.utilidad.rareza.raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9C27B0' }}>M. Raro:</span> <strong style={{ color: filtro === 'Utilidad' ? '#fff' : '#666' }}>{renderCount(statsHome.utilidad.rareza.muy_raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FF9800' }}>Leyenda:</span> <strong style={{ color: filtro === 'Utilidad' ? '#fff' : '#666' }}>{renderCount(statsHome.utilidad.rareza.legendario)}</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="contenedor-lideres" onScroll={() => setHoverInfo(null)} style={{ height: '440px', overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {gruposTR.map(grupo => {
                         if (grupo.items.length === 0) return null;
                         return (
-                            <div key={grupo.id} className="grupo-lider" style={{ backgroundColor: '#1a1a24', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
-                                <div className="cabecera-lider" style={{ borderBottom: `2px solid ${grupo.color}` }} onClick={() => setGruposColapsados(p => ({...p, [grupo.id]: !p[grupo.id]}))}>
-                                    <h3 style={{ color: grupo.color, fontSize: '0.85rem' }}><span className={`icono-acordeon ${gruposColapsados[grupo.id] ? 'colapsado' : ''}`}>▼</span> {grupo.nombre}</h3>
-                                    <span className="contador-tropas" style={{ backgroundColor: grupo.color }}>{grupo.items.length}</span>
+                            <div key={grupo.id} className="grupo-lider" style={{ backgroundColor: '#1a1a24', padding: '6px 10px', borderRadius: '6px' }}>
+                                <div className="cabecera-lider" style={{ borderBottom: `2px solid ${grupo.color}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', paddingBottom: '4px' }} onClick={() => setGruposColapsados(p => ({...p, [grupo.id]: !p[grupo.id]}))}>
+                                    <h3 style={{ color: grupo.color, fontSize: '0.75rem', margin: 0, textTransform: 'uppercase' }}>
+                                        <span style={{display: 'inline-block', transform: gruposColapsados[grupo.id] ? 'rotate(-90deg)' : 'none', transition: '0.2s', marginRight: '6px'}}>▼</span> 
+                                        {grupo.nombre}
+                                    </h3>
+                                    <span style={{ backgroundColor: grupo.color, color: '#111', padding: '1px 6px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 'bold' }}>{grupo.items.length}</span>
                                 </div>
+                                
                                 {!gruposColapsados[grupo.id] && (
-                                    <div className="grid-inventario">
-                                        {grupo.items.map(eq => {
-                                            const claseRareza = RAREZA_CLASES[eq.rareza || 'Común'];
-                                            let tooltipText = `[${(eq.rareza || 'COMÚN').toUpperCase()}] ${eq.propietario !== 'Global' ? `(DUEÑO: ${eq.propietario})` : ''}\n${eq.nombre.toUpperCase()}\nTR MOD: +${eq.mod_cr || 0}`;
-                                            if (eq.habilidad) tooltipText += `\n> PERK: ${eq.habilidad}`;
-                                            if (eq.reduccion_dmg) tooltipText += `\n> DEFENSA: ${eq.reduccion_dmg}%`;
+                                    <CarruselHorizontal colorTema={grupo.color} className="grid-inventario" contenedorStyle={{ display: 'flex', padding: '15px 5px', width: '100%' }}>
+                                        {grupo.items.map((eq, index) => {
+                                            const hexColor = COLOR_RAREZA[eq.rareza || 'Común'];
+                                            const IconoItem = ICONO_TIPO[eq.tipo] || GiWoodenCrate;
+                                            const isHovered = hoverInfo?.eq?.id === eq.id;
                                             
                                             return (
-                                            <div key={eq.id} className={`casilla-item ${claseRareza} ${eq.stock === 0 ? 'sin-stock' : ''} ${dragTargetId === eq.id ? (dropPos === 'left' ? 'drop-target-left' : 'drop-target-right') : ''}`} draggable={(eq.stock > 0 && puedeEditar)} data-tooltip={tooltipText} onDragStart={e => handleDragStartInv(e, eq)} onDragOver={e => handleDragOverInv(e, eq)} onDrop={e => handleDropInv(e, eq)} onDragEnd={clearDrag}>
-                                                {esGM && <div className="casilla-opciones" onClick={(e) => { e.stopPropagation(); setEquipoAEditar(eq); setIsModalOpen(true);}}>⚙️</div>}
-                                                <img src={eq.foto || '/assets/slot-vacio.png'} alt="i" />
-                                                <span className={`badge-stock ${eq.stock === 0 ? 'vacio' : ''}`}>{eq.stock}</span>
+                                            <div 
+                                                key={eq.id} 
+                                                className={`casilla-item ${eq.stock === 0 ? 'sin-stock' : ''}`} // LA CLASE ESTÁ DE VUELTA
+                                                draggable={(eq.stock > 0 && puedeEditar)} 
+                                                onDragStart={e => handleDragStartInv(e, eq)} 
+                                                onDragEnd={clearDrag}
+                                                onMouseEnter={(e) => {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setHoverInfo({ eq, x: rect.left + rect.width / 2, y: rect.bottom + 10, color: hexColor });
+                                                }}
+                                                onMouseLeave={() => setHoverInfo(null)}
+                                                style={{ 
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+                                                    backgroundColor: '#111', borderRadius: '6px', 
+                                                    minWidth: '65px', width: '65px', height: '85px', padding: '3px', boxSizing: 'border-box',
+                                                    position: 'relative', cursor: (eq.stock > 0 && puedeEditar) ? 'grab' : 'default',
+                                                    marginLeft: index === 0 ? '0' : '-15px',
+                                                    zIndex: isHovered ? 100 : (50 - index),
+                                                    transform: isHovered ? 'scale(1.15) translateY(-5px)' : 'scale(1)',
+                                                    transition: 'transform 0.1s ease, z-index 0s',
+                                                    boxShadow: `inset 0 0 10px ${hexColor}33`,
+                                                    border: `1px solid ${hexColor}88`
+                                                }}
+                                            >
+                                                {/* EL BOTÓN GM CON LA CLASE CSS ORIGINAL */}
+                                                {esGM && (
+                                                    <div 
+                                                        className="casilla-opciones" 
+                                                        style={{ zIndex: 10, pointerEvents: 'auto' }}
+                                                        onClick={(e) => { 
+                                                            e.preventDefault(); 
+                                                            e.stopPropagation(); 
+                                                            setHoverInfo(null); 
+                                                            setEquipoAEditar(eq); 
+                                                            setIsModalOpen(true);
+                                                        }}
+                                                    >
+                                                        <FaCog style={{ color: '#fff', fontSize: '12px' }} />
+                                                    </div>
+                                                )}
+                                                
+                                                <div style={{ pointerEvents: 'none', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div style={{ width: '100%', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', backgroundColor: '#000', overflow: 'hidden' }}>
+                                                        {eq.foto ? (
+                                                            <img src={eq.foto} alt="item" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                        ) : (
+                                                            <div style={{ fontSize: '1.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff', filter: `drop-shadow(0 0 5px ${hexColor}88)` }}>
+                                                                <IconoItem />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ fontSize: '0.55rem', color: '#fff', textAlign: 'center', width: '100%', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginTop: '2px', fontWeight: 'bold', lineHeight: '1.1' }}>
+                                                        {eq.nombre}
+                                                    </div>
+
+                                                    <span style={{ position: 'absolute', top: '-5px', right: '-5px', backgroundColor: eq.stock === 0 ? '#555' : '#F44336', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 'bold', border: '1px solid #111', zIndex: 10 }}>
+                                                        {eq.stock}
+                                                    </span>
+                                                </div>
                                             </div>
                                         )})}
-                                    </div>
+                                    </CarruselHorizontal>
                                 )}
                             </div>
                         );
                     })}
                 </div>
-                
             </div>
 
             <div className="estacion-equipamiento" style={{ flex: 1.5 }}>
                 
-                {/* FILTROS TÁCTICOS Y GALERÍA (Se mantiene igual) */}
                 <div style={{ backgroundColor: '#1a1a24', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #3f3f5a' }}>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
                         <input type="text" placeholder="🔍 Nombre o Alias..." value={filtroNombre} onChange={e => setFiltroNombre(e.target.value)} style={{flex: 1, padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', outline: 'none'}} />
@@ -323,9 +454,7 @@ export default function Armeria() {
 
                 {!soldadoId ? (
                     <div style={{ animation: 'fadeIn 0.3s ease' }}>
-
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', maxHeight: '420px', overflowY: 'auto', paddingRight: '5px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '15px', maxHeight: '45%', overflowY: 'auto', paddingTop:'5px',paddingRight: '5px' }}>
                             {soldadosFiltrados.length === 0 ? (
                                 <p style={{ textAlign: 'center', gridColumn: '1/-1', color: '#888', marginTop: '20px' }}>No hay operativos que coincidan con los filtros actuales.</p>
                             ) : (
@@ -399,7 +528,7 @@ export default function Armeria() {
                                         <div style={{ width: '2px', height: '40px', backgroundColor: '#3f3f5a' }}></div>
                                         <div style={{ textAlign: 'left' }}>
                                             <span style={{ color: '#00BCD4', fontSize: '0.7rem', display: 'block', letterSpacing: '1px', paddingTop: "2px" }}>TACTICAL RATING</span>
-                                            <h2 style={{ margin: 0, color: trTotal > nvEfectivo ? '#4CAF50' : '#fff', fontSize: '3rem', lineHeight: '1', textShadow: trTotal > nvEfectivo ? '0 0 15px rgba(76,175,80,0.5)' : 'none' }}>{trTotal}</h2>
+                                            <h2 style={{ margin: '0', color: trTotal > nvEfectivo ? '#4CAF50' : '#fff', fontSize: '3rem', lineHeight: '1', textShadow: trTotal > nvEfectivo ? '0 0 15px rgba(76,175,80,0.5)' : 'none' }}>{trTotal}</h2>
                                         </div>
                                     </div>
                                 </div>

@@ -17,8 +17,8 @@ const ROLE_MAP = {
 };
 
 export const DataProvider = ({ children }) => {
-    // AÑADIDO: planetas: [] en el estado inicial
-    const [data, setData] = useState({ soldados: [], escuadrones: [], misiones: [], equipo: [], vehiculos: [], planetas: [] });
+    // 1. AÑADIDO: comandantes: [] en el estado inicial
+    const [data, setData] = useState({ soldados: [], escuadrones: [], misiones: [], equipo: [], vehiculos: [], planetas: [], comandantes: [] });
     const [loading, setLoading] = useState(true);
     
     const [user, setUser] = useState(null);
@@ -28,14 +28,15 @@ export const DataProvider = ({ children }) => {
     const cargarTodo = async () => {
         setLoading(true);
         try {
-            // AÑADIDO: p_snap para los planetas
-            const [s_snap, e_snap, m_snap, eq_snap, v_snap, p_snap] = await Promise.all([
+            // 2. AÑADIDO: c_snap para los comandantes (economía)
+            const [s_snap, e_snap, m_snap, eq_snap, v_snap, p_snap, c_snap] = await Promise.all([
                 getDocs(collection(db, "soldados")),
                 getDocs(collection(db, "escuadrones")),
                 getDocs(collection(db, "misiones")),
                 getDocs(collection(db, "equipo")),
                 getDocs(collection(db, "vehiculos")),
-                getDocs(collection(db, "planetas")) // <--- NUEVA COLECCIÓN
+                getDocs(collection(db, "planetas")),
+                getDocs(collection(db, "comandantes")) // <--- NUEVA COLECCIÓN
             ]);
 
             setData({
@@ -44,7 +45,8 @@ export const DataProvider = ({ children }) => {
                 misiones: m_snap.docs.map(d => ({ id: d.id, ...d.data() })),
                 equipo: eq_snap.docs.map(d => ({ id: d.id, ...d.data() })),
                 vehiculos: v_snap.docs.map(d => ({ id: d.id, ...d.data() })),
-                planetas: p_snap.docs.map(d => ({ id: d.id, ...d.data() })) // <--- AÑADIDO AL ESTADO
+                planetas: p_snap.docs.map(d => ({ id: d.id, ...d.data() })),
+                comandantes: c_snap.docs.map(d => ({ id: d.id, ...d.data() })) // <--- AÑADIDO AL ESTADO
             });
         } catch (error) { console.error("Error de enlace con Firebase:", error); } 
         finally { setLoading(false); }

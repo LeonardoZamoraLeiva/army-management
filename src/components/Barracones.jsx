@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ModalSoldado from './ModalSoldado';
+import CarruselHorizontal from './CarruselHorizontal'
 
 
 import { collection, addDoc } from 'firebase/firestore';
@@ -140,27 +141,6 @@ const calibrarPrestigioVeteranos = async () => {
         setFaccionesColapsadas(prev => ({ ...prev, [faccion]: !prev[faccion] }));
     };
 
-    // Sensor Inteligente de Flechas de Carrusel
-    const actualizarFlechas = (gridElement) => {
-        if (!gridElement) return;
-        const parent = gridElement.parentElement;
-        const leftBtn = parent.querySelector('.btn-scroll.izq');
-        const rightBtn = parent.querySelector('.btn-scroll.der');
-
-        const hayDesbordamiento = gridElement.scrollWidth > gridElement.clientWidth;
-
-        if (leftBtn) {
-            const puedeIzquierda = hayDesbordamiento && gridElement.scrollLeft > 0;
-            leftBtn.style.opacity = puedeIzquierda ? '1' : '0';
-            leftBtn.style.pointerEvents = puedeIzquierda ? 'auto' : 'none';
-        }
-        if (rightBtn) {
-            const llegoAlFinal = gridElement.scrollLeft + gridElement.clientWidth >= gridElement.scrollWidth - 5;
-            const puedeDerecha = hayDesbordamiento && !llegoAlFinal;
-            rightBtn.style.opacity = puedeDerecha ? '1' : '0';
-            rightBtn.style.pointerEvents = puedeDerecha ? 'auto' : 'none';
-        }
-    };
 
     const abrirModalNuevo = (faccionSugerida) => { 
         setSoldadoParaEditar({ lider: faccionSugerida }); 
@@ -333,59 +313,39 @@ const calibrarPrestigioVeteranos = async () => {
                                     </div>
                                     
                                     {!estaColapsado && (
-                                            <div 
-                                                className="contenedor-carrusel"
-                                                onMouseEnter={(e) => actualizarFlechas(e.currentTarget.querySelector('.grid-tropas'))}
-                                                style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', marginTop: '10px' }}
-                                            >
-                                            <button 
-                                                    className="btn-scroll izq" 
-                                                    style={{ position: 'absolute', left: '-15px', zIndex: 10, background: '#333', color: '#fff', border: '1px solid #555', borderRadius: '50%', width: '35px', height: '35px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 8px rgba(0,0,0,0.5)' }}
-                                                    onClick={(e) => { e.preventDefault(); document.getElementById(`grid-${faccion}`).scrollBy({ left: -200, behavior: 'smooth' }); }}
-                                                >◀</button>
+                                        <CarruselHorizontal colorTema="#555" className="grid-tropas" contenedorStyle={{ display: 'flex', gap: '10px', width: '100%', padding: '15px 5px 5px 30px' }}>
+                                            {tropas.map(s => {
+                                                const esSeleccionado = soldadoSeleccionado?.id === s.id;
+                                                const configS = obtenerConfigSalud(s.estado_salud);
+                                                
+                                                let dragClass = '';
+                                                if (dragTargetId === s.id && dropPosition) {
+                                                    dragClass = dropPosition === 'left' ? 'drop-left' : 'drop-right';
+                                                }
 
-                                            <div id={`grid-${faccion}`} 
-                                                className="grid-tropas" 
-                                                onScroll={(e) => actualizarFlechas(e.target)}
-                                                    style={{ display: 'flex', gap: '10px', overflowX: 'auto', scrollBehavior: 'smooth', width: '100%', padding: '15px 5px 5px 30px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                                                    <style>{`.grid-tropas::-webkit-scrollbar { display: none; }`}</style>
-                                                {tropas.map(s => {
-                                                    const esSeleccionado = soldadoSeleccionado?.id === s.id;
-                                                    const configS = obtenerConfigSalud(s.estado_salud);
-                                                    
-                                                    let dragClass = '';
-                                                    if (dragTargetId === s.id && dropPosition) {
-                                                        dragClass = dropPosition === 'left' ? 'drop-left' : 'drop-right';
-                                                    }
-
-                                                    return (
-                                                        <div 
-                                                            key={s.id} 
-                                                            draggable={puedeEditar(s)} 
-                                                            onDragStart={(e) => handleDragStart(e, s)}
-                                                            onDragOver={(e) => handleDragOverItem(e, s)}
-                                                            onDragLeave={() => setDragTargetId(null)}
-                                                            onDrop={(e) => handleDrop(e, s, faccion)}
-                                                            className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} 
-                                                            onClick={() => setSoldadoSeleccionado(s)}
-                                                            // AÑADIDO: width, maxWidth y overflow hidden para fijar el tamaño
-                                                            style={{ width: '130px', minWidth: '130px', maxWidth: '130px', overflow: 'hidden' }}
-                                                        >
-                                                            <span className="chapa-nivel">Lvl {s.nivel || 1}</span>
-                                                            <div className="chapa-estado" style={{ backgroundColor: configS.color }} title={configS.texto}></div>
-                                                            <img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} className="chapa-foto" alt="perfil" style={{ borderColor: esSeleccionado ? '#4CAF50' : '#555' }} />
-                                                            {/* AÑADIDO: whiteSpace, overflow y textOverflow en el h4 */}
-                                                            <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: esSeleccionado ? '#4CAF50' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }} title={s.nombre}>
-                                                                {s.nombre}
-                                                            </h4>
-                                                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{s.clase}</p>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            <button className="btn-scroll der" onClick={(e) => { e.preventDefault(); document.getElementById(`grid-${faccion}`).scrollBy({ left: 200, behavior: 'smooth' }); }}>▶</button>
-                                        </div>
+                                                return (
+                                                    <div 
+                                                        key={s.id} 
+                                                        draggable={puedeEditar(s)} 
+                                                        onDragStart={(e) => handleDragStart(e, s)}
+                                                        onDragOver={(e) => handleDragOverItem(e, s)}
+                                                        onDragLeave={() => setDragTargetId(null)}
+                                                        onDrop={(e) => handleDrop(e, s, faccion)}
+                                                        className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} 
+                                                        onClick={() => setSoldadoSeleccionado(s)}
+                                                        style={{ width: '130px', minWidth: '130px', maxWidth: '130px', overflow: 'hidden' }}
+                                                    >
+                                                        <span className="chapa-nivel">Lvl {s.nivel || 1}</span>
+                                                        <div className="chapa-estado" style={{ backgroundColor: configS.color }} title={configS.texto}></div>
+                                                        <img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} className="chapa-foto" alt="perfil" style={{ borderColor: esSeleccionado ? '#4CAF50' : '#555' }} />
+                                                        <h4 style={{ margin: '0 0 2px 0', fontSize: '0.85rem', color: esSeleccionado ? '#4CAF50' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }} title={s.nombre}>
+                                                            {s.nombre}
+                                                        </h4>
+                                                        <p style={{ margin: 0, fontSize: '0.7rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>{s.clase}</p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </CarruselHorizontal>
                                     )}
                                 </div>
                             );

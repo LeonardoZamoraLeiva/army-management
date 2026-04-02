@@ -173,7 +173,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .badge-stock.vacio { background-color: #F44336; }
 
 /* Menú Engranaje Oculto */
-.casilla-opciones { position: absolute; top: -8px; left: -8px; background: #555; border-radius: 50%; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; font-size: 0.7rem; cursor: pointer; opacity: 0; transition: 0.2s; border: 2px solid #1a1a24; }
+.casilla-opciones { position: absolute; top: -2px; left: -2px; background: #555; border-radius: 50%; width: 15px; height: 15px; display: flex; justify-content: center; align-items: center; font-size: 0.7rem; cursor: pointer; opacity: 0; transition: 0.2s; border: 0.5px solid #424252; }
 .casilla-item:hover .casilla-opciones { opacity: 1; }
 .casilla-opciones:hover { background: #FF9800; transform: scale(1.2); }
 
@@ -237,33 +237,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .d3-left-col span { color: #00E5FF !important; }
 
 
-/* --- TOOLTIP TÁCTICO PARA INVENTARIO IZQUIERDO --- */
-.casilla-item::after { 
-    content: attr(data-tooltip); 
-    position: absolute; 
-    bottom: 110%; /* Aparece por encima del objeto */
-    left: 50%; 
-    transform: translateX(-50%); 
-    background: rgba(10, 15, 30, 0.95); 
-    color: #B2EBF2; 
-    /* Letra muy pequeña (0.55rem) porque la casilla crecerá un 50% con el hover */
-    font-size: 0.55rem; 
-    padding: 8px; 
-    border: 1px solid #00E5FF; 
-    border-radius: 4px; 
-    width: max-content; 
-    max-width: 150px; 
-    text-align: left; 
-    pointer-events: none; 
-    white-space: pre-wrap; 
-    z-index: 100; 
-    box-shadow: 0 5px 15px rgba(0,0,0,0.8); 
-    font-family: monospace; 
-    
-    /* Efecto de aparición */
-    opacity: 0; 
-    transition: opacity 0.2s ease; 
-}
+
 
 /* Solo se vuelve visible cuando el ratón está encima */
 .casilla-item:hover::after { 
@@ -470,14 +444,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .btn-quitar-item:hover { transform: scale(1.15); background-color: #ff5252; }
 
 /* --- CAPA 3: EL TOOLTIP Y CANDADOS (::after) --- */
-.d3-slot.unlocked:hover::after {
-    content: attr(data-tooltip);
-    position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
-    background: rgba(17, 17, 24, 0.95); color: #fff; font-size: 0.75rem;
-    padding: 8px; border: 1px solid #9C27B0; border-radius: 4px;
-    width: max-content; max-width: 200px; text-align: center; pointer-events: none;
-    white-space: pre-wrap; z-index: 100;
-}
+
 
 .d3-slot.locked::before { opacity: 0.25; }
 .d3-slot.locked::after {

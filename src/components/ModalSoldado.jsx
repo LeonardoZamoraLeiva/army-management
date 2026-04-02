@@ -3,6 +3,18 @@ import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestor
 import { db } from '../firebase';
 import { useData } from '../context/DataContext';
 
+// DICCIONARIO CENTRAL DE ESPECIALIDADES
+const LISTA_ESPECIALIDADES = [
+    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina de Combate", "Criptografía", "Astronavegación"] },
+    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador"] },
+    { grupo: "Combate Especializado (STR/CON)", items: ["Demoliciones", "Artillería Pesada", "CQC", "Supervivencia"] },
+    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión / Engaño"] },
+    { grupo: "Anomalías / Poderes (Especial)", items: ["Percepción Aumentada", "Habilidades especiales", "Piloto de Combate"] },
+    { grupo: "Extras raros", items: ["Usuario Nen"] }
+];
+
+const NIVELES_DESBLOQUEO = [6, 11, 16, 20];
+
 export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
     const { recargarTodo, userRole } = useData();
     const [tabActiva, setTabActiva] = useState('personal');
@@ -13,24 +25,25 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
     const estadoInicial = {
         nombre: '', nombre_clave: '', rango: '', clase: '', nivel: 1, xp: 0, puntos_prestigio: 0,
         genero: 'Masculino', foto: '', 
-        lider: esGM ? 'Libres' : (userRole || 'Libres'), // Asigna al creador automáticamente
+        lider: esGM ? 'Libres' : (userRole || 'Libres'),
         estado_salud: 'Sano', veces_salvado: 0, 
         operaciones: 0, exitos: 0,
         alineamiento: '', rasgos: '', motivaciones: '', descripcion: '', otros: '',
         atributos: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-        medallas: { 'SS': 0, 'S': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 }
+        medallas: { 'SS': 0, 'S': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0 },
+        especialidades: ['', '', '', ''] // <-- NUEVO: 4 Ranuras vacías
     };
 
     const [formData, setFormData] = useState(estadoInicial);
 
     useEffect(() => {
         if (soldadoData) {
-            // Asegurar que si faltan medallas o atributos en data vieja, no crashee
             setFormData({ 
                 ...estadoInicial, 
                 ...soldadoData, 
                 atributos: { ...estadoInicial.atributos, ...(soldadoData.atributos || {}) },
-                medallas: { ...estadoInicial.medallas, ...(soldadoData.medallas || {}) }
+                medallas: { ...estadoInicial.medallas, ...(soldadoData.medallas || {}) },
+                especialidades: soldadoData.especialidades || ['', '', '', ''] // Garantiza el array
             });
         } else {
             setFormData({ ...estadoInicial, lider: esGM ? 'Libres' : (userRole || 'Libres') });
@@ -61,6 +74,13 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
         }));
     };
 
+    // NUEVO: Manejador para las ranuras de especialidad
+    const handleEspecialidadChange = (index, value) => {
+        const nuevasEsp = [...formData.especialidades];
+        nuevasEsp[index] = value;
+        setFormData(prev => ({ ...prev, especialidades: nuevasEsp }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
@@ -83,7 +103,6 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
 
     if (!isOpen) return null;
 
-    // ESTILO PARA CAMPOS BLOQUEADOS
     const estiloLock = !esGM ? { backgroundColor: '#1a1a1a', opacity: 0.7, cursor: 'not-allowed' } : {};
 
     return (
@@ -95,8 +114,9 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                 </h2>
                 
                 <div className="mini-tabs" style={{ marginBottom: '20px' }}>
-                    <button type="button" className={`mini-tab-btn ${tabActiva === 'personal' ? 'activo' : ''}`} onClick={() => setTabActiva('personal')}>Datos Personales</button>
+                    <button type="button" className={`mini-tab-btn ${tabActiva === 'personal' ? 'activo' : ''}`} onClick={() => setTabActiva('personal')}>Datos</button>
                     <button type="button" className={`mini-tab-btn ${tabActiva === 'stats' ? 'activo' : ''}`} onClick={() => setTabActiva('stats')}>Estadísticas { !esGM && '🔒'}</button>
+                    <button type="button" className={`mini-tab-btn ${tabActiva === 'especialidades' ? 'activo' : ''}`} onClick={() => setTabActiva('especialidades')}>Táctica</button>
                     <button type="button" className={`mini-tab-btn ${tabActiva === 'lore' ? 'activo' : ''}`} onClick={() => setTabActiva('lore')}>Perfil Psicológico</button>
                 </div>
 
@@ -186,6 +206,50 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                                         <input type="number" name={m} value={formData.medallas[m] || 0} onChange={handleMedallaChange} disabled={!esGM} style={{ width: '100%', padding: '5px', textAlign: 'center', ...estiloLock }} />
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* NUEVA PESTAÑA DE ESPECIALIDADES */}
+                    {tabActiva === 'especialidades' && (
+                        <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                            <p style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '15px', lineHeight: '1.4' }}>
+                                Los operativos ganan especialidades tácticas al alcanzar los <b>niveles 6, 11, 16 y 20</b>. Puedes escoger la misma mas de una vez. 
+                                {!esGM && <span style={{ color: '#F44336' }}> Una vez asignada y guardada una especialidad, solo el GM puede revocarla.</span>}
+                            </p>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                {NIVELES_DESBLOQUEO.map((lvlReq, idx) => {
+                                    // El jugador puede editar si: Es GM, o si tiene nivel y NO había guardado nada aquí antes.
+                                    const tieneNivel = esGM || formData.nivel >= lvlReq;
+                                    const yaEstabaGuardada = !esGM && soldadoData?.especialidades && soldadoData.especialidades[idx] !== '';
+                                    const bloqueado = !tieneNivel || yaEstabaGuardada;
+
+                                    return (
+                                        <div key={idx} style={{ backgroundColor: tieneNivel ? '#1a1a24' : '#111', padding: '12px', borderRadius: '6px', borderLeft: `4px solid ${tieneNivel ? (yaEstabaGuardada ? '#4CAF50' : '#00BCD4') : '#333'}`, display: 'flex', flexDirection: 'column' }}>
+                                            <label style={{ display: 'flex', justifyContent: 'space-between', color: tieneNivel ? '#fff' : '#555', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                                <span>Especialidad lvl {lvlReq}</span>
+                                                {yaEstabaGuardada && <span title="Bloqueado por el Mando Central">🔒</span>}
+                                            </label>
+                                            
+                                            <select
+                                                value={formData.especialidades[idx] || ''}
+                                                onChange={(e) => handleEspecialidadChange(idx, e.target.value)}
+                                                disabled={bloqueado}
+                                                style={{ width: '100%', padding: '8px', backgroundColor: bloqueado ? '#000' : '#111', color: tieneNivel ? '#00BCD4' : '#555', border: '1px solid #333', borderRadius: '4px', outline: 'none', cursor: bloqueado ? 'not-allowed' : 'pointer' }}
+                                            >
+                                                <option value="">-- Sin Especialidad --</option>
+                                                {LISTA_ESPECIALIDADES.map((categoria, catIdx) => (
+                                                    <optgroup key={catIdx} label={categoria.grupo}>
+                                                        {categoria.items.map(item => (
+                                                            <option key={item} value={item}>{item}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

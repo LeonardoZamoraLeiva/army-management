@@ -25,8 +25,11 @@ export default function Hangar() {
         return activo?.propietario === userRole;
     };
 
-    const vehiculosList = vehiculos.filter(v => !v.categoria || v.categoria === 'Vehículo');
-    const droidesList = vehiculos.filter(v => v.categoria === 'Droide');
+// Primero filtramos lo que el usuario tiene derecho a ver
+    const activosVisibles = vehiculos.filter(v => esGM || v.propietario !== 'GM');
+
+    const vehiculosList = activosVisibles.filter(v => !v.categoria || v.categoria === 'Vehículo');
+    const droidesList = activosVisibles.filter(v => v.categoria === 'Droide');
 
     const cVeh = (prop, val) => vehiculosList.filter(v => v[prop] === val).length;
     const cDr = (val) => droidesList.filter(d => d.rol === val).length;

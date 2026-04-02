@@ -63,14 +63,12 @@ export const calcularTREscuadron = (escuadron, soldados, vehiculos, equipo) => {
 };
 
 export default function Escuadrones() {
-    // --- EXTRAEMOS EL ROL DE USUARIO ---
     const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
     const [escuadronId, setEscuadronId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [escuadronAEditar, setEscuadronAEditar] = useState(null);
     const [faccionesAbiertas, setFaccionesAbiertas] = useState({});
 
-    // --- VARIABLES DE SEGURIDAD ---
     const esGM = userRole === 'GM';
     const esInvitado = !userRole || userRole === 'Espectador';
     
@@ -81,8 +79,6 @@ export default function Escuadrones() {
     };
 
     const escuadronActual = escuadrones.find(e => e.id === escuadronId);
-    
-    // ¿Tiene permiso sobre el escuadrón actualmente en pantalla?
     const permisoSobreActual = escuadronActual ? puedeEditarEscuadron(escuadronActual.faccion) : false;
 
     const toggleFaccion = (faccion) => {
@@ -150,7 +146,6 @@ export default function Escuadrones() {
         recargarTodo();
     };
 
-    // --- MODIFICADO: Acepta 'disableSelect' para bloquear la modificación visual ---
     const renderCard = (titulo, color, item, opciones, onChange, isLocked, reqText, placeholder, disableSelect = false) => {
         if (isLocked) {
             return (
@@ -220,11 +215,10 @@ export default function Escuadrones() {
         const opcionesDroide = droidesList.filter(d => !assignedDroids.has(String(d.id)) || String(d.id) === String(droide?.id));
         const opcionesVehiculo = vehiculosList.filter(v => !assignedVehicles.has(String(v.id)) || String(v.id) === String(vehiculo?.id));
 
-        // Determinar si debemos bloquear los selectores visualmente
         const deshabilitar = !permisoSobreActual;
 
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '10px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', width: '100%' }}>
                     {renderCard('🛸 Nave', '#9C27B0', nave, opcionesNave, e => handleUpdateCampo('nave_id', e.target.value), false, '', 'Comercial', deshabilitar)}
                     {renderCard('⭐ Capitán', '#FF9800', lider, opcionesLider, e => handleUpdateCampo('lider_id', e.target.value), false, '', 'Relevar', deshabilitar)}
@@ -269,7 +263,6 @@ export default function Escuadrones() {
                                         🏳️ {faccion}
                                     </h3>
                                     
-                                    {/* OCULTAR EL BOTON DE FORMAR SI LA FACCION NO ES TUYA */}
                                     {puedeEditarEscuadron(faccion) && (
                                         <button 
                                             className="btn-reclutar-mini" 
@@ -313,7 +306,6 @@ export default function Escuadrones() {
                         </div>
                     ))}
 
-                    {/* BOTÓN INFERIOR DE NUEVO ESCUADRÓN/FACCIÓN (Oculto a invitados) */}
                     {!esInvitado && (
                         <button 
                             style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', border: '1px dashed #3f3f5a', color: '#8892b0', borderRadius: '6px', cursor: 'pointer', transition: '0.2s' }}
@@ -388,16 +380,70 @@ export default function Escuadrones() {
                         const moralData = getMoralData(escuadronActual.moral);
                         const rangoData = getRangoEscuadron(escuadronActual.xp_escuadron);
 
+                        // --- ESCÁNER TÁCTICO: Extracción de Tags ---
+                        const extractTags = () => {
+                            const tagMap = {};
+                            const add = (t) => {
+                                if(!t) return;
+                                const clean = t.trim();
+                                if(clean !== '') tagMap[clean] = (tagMap[clean] || 0) + 1;
+                            };
+
+                            // 1. Tags de los Soldados y su Equipo
+                            const ids = [escuadronActual.lider_id, ...(escuadronActual.miembros || [])].filter(Boolean);
+                            ids.forEach(id => {
+                                const sol = soldados.find(s => String(s.id) === String(id));
+                                if(sol) {
+                                    // Especialidades Nativas (Las que configuramos recién en el Nivel 6, 11, etc.)
+                                    (sol.especialidades || []).forEach(add);
+
+                                    // Habilidades del Equipo / Armas / Reliquias
+                                    if (sol.equipo) {
+                                        Object.values(sol.equipo).forEach(itemId => {
+                                            const itm = equipo.find(e => String(e.id) === String(itemId));
+                                            if(itm && itm.habilidad) {
+                                                // Si el GM puso "Hackeo, Visión Nocturna", lo dividimos por coma
+                                                itm.habilidad.split(',').forEach(add);
+                                            }
+                                        });
+                                    }
+                                }
+                            });
+
+                            // 2. Tags de la Nave, Vehículo y Droide
+                            const nave = vehiculos.find(v => String(v.id) === String(escuadronActual.nave_id));
+                            if(nave) { 
+                                add(`Nave ${nave.entorno}`); 
+                                add(`Motor FTL Clase ${nave.hiperimpulsor}`); 
+                                if(nave.habilidad) nave.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                            }
+
+                            const veh = vehiculos.find(v => String(v.id) === String(escuadronActual.vehiculo_id));
+                            if(veh) { 
+                                add(`Vehículo ${veh.entorno}`); 
+                                add(`Rol: ${veh.rol}`); 
+                                if(veh.habilidad) veh.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                            }
+
+                            const dr = vehiculos.find(v => String(v.id) === String(escuadronActual.droide_id));
+                            if(dr) { 
+                                add(`Droide ${dr.rol}`); 
+                                if(dr.habilidad) dr.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                            }
+                            return Object.entries(tagMap).sort((a,b) => b[1] - a[1]);
+                        };
+
+                        const tagsActivos = extractTags();
+
                         return (
                             <div className="tarjeta-soldado" style={{ backgroundColor: '#0b0f19', borderRadius: '8px', padding: '25px', boxShadow: '0 8px 16px rgba(0,0,0,0.5)', borderTop: '5px solid #FF9800', position: 'relative' }}>
                                 <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px' }}>
                                     <button className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }} onClick={() => setEscuadronId(null)}>⬅ Volver</button>
                                     
-                                    {/* LOS BOTONES DE AJUSTES Y EQUIPAR SOLO LOS VE EL DUEÑO O EL GM */}
                                     {permisoSobreActual && (
                                         <>
                                             <button className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#fff', fontWeight: 'bold' }} onClick={() => { 
-                                                localStorage.setItem('armeria_target_escuadron', escuadronActual.id); // Bug corregido: era escuadronActual.id, no soldadoSeleccionado.id
+                                                localStorage.setItem('armeria_target_escuadron', escuadronActual.id); 
                                                 window.dispatchEvent(new Event('salto_armeria'));
                                             }}>🔫 Equipar</button>
                                             <button className="btn-accion pequeno" style={{ backgroundColor: '#555', color: '#fff' }} onClick={() => { setEscuadronAEditar(escuadronActual); setIsModalOpen(true); }}>⚙️ Ajustes</button>
@@ -434,6 +480,22 @@ export default function Escuadrones() {
                                     <div style={{ flex: 1 }}>
                                         {renderListaMiembros()}
                                         
+                                        {/* --- NUEVA ZONA: ESCÁNER TÁCTICO (TAGS) --- */}
+                                        <div style={{ marginTop: '20px', backgroundColor: '#111118', padding: '15px', borderRadius: '6px', border: '1px solid #00BCD4' }}>
+                                            <h4 style={{ color: '#00BCD4', margin: '0 0 10px 0', textTransform: 'uppercase' }}>📡 Escáner Táctico (Tags Activos)</h4>
+                                            {tagsActivos.length === 0 ? (
+                                                <span style={{ color: '#666', fontSize: '0.85rem', fontStyle: 'italic' }}>No se han detectado especialidades ni ventajas mecánicas.</span>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                    {tagsActivos.map(([nombreTag, cant]) => (
+                                                        <span key={nombreTag} style={{ backgroundColor: '#1a2235', border: '1px solid #00BCD4', color: '#fff', padding: '4px 10px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                                            {nombreTag} {cant > 1 && <span style={{ color: '#FFC107', marginLeft: '4px' }}>x{cant}</span>}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         <h4 style={{ color: '#aaa', borderBottom: '1px solid #3f3f5a', paddingBottom: '5px', marginTop: '20px', width: '100%' }}>Bitácora de Operaciones</h4>
                                         <div className="bitacora-container">
                                             {(escuadronActual.bitacora || []).length > 0 ? (

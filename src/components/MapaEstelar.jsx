@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MapContainer, ImageOverlay, Marker, CircleMarker, Tooltip, Polyline, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useData } from '../context/DataContext';
 import { db } from '../firebase';
-import { updateDoc, doc, collection, onSnapshot, deleteDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { updateDoc, doc, collection, onSnapshot, deleteDoc, arrayUnion, setDoc, increment } from 'firebase/firestore';
 import ModalPlaneta from './ModalPlaneta';
 import ModalMision from './ModalMision'; 
 import ModalDesplegar from './ModalDesplegar'; 
@@ -180,12 +180,19 @@ function CapaDinamicaPlanetas({ planetas, escuadrones, misiones, planetaSelId, s
 
 // SUB-COMPONENTE: Tarjeta de Misión Unificada
 function TarjetaMisionGlobal({ 
-    m, planetas, escuadrones, soldados, vehiculos, equipo, esGM, userRole, relojGalactico, 
+    m, planetas, escuadrones, soldados, vehiculos, equipo, esGM, userRole, 
     isGlobalContext, misionExpandida, setMisionExpandida, setPlanetaSelId, setOrigenSeleccion, 
     setMisionParaEditar, setIsModalMisionOpen, setMisionActiva, setIsModalDesplegarOpen, 
     iniciarEjecucionManual, solicitarAbortoMision, setAlertaAborto, eliminarMision, solicitarDespliegueMision,
     onDropEscuadron, onDragOver, resolverMision 
 }) {
+    // NUEVO: El reloj rápido ahora vive EXCLUSIVAMENTE dentro de la tarjeta
+    const [ahora, setAhora] = useState(Date.now());
+    useEffect(() => {
+        const timer = setInterval(() => setAhora(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
     const isExpanded = misionExpandida === m.id;
     const planetaDestino = planetas.find(p => String(p.id) === String(m.ubicacion_id));
     const nombrePlaneta = planetaDestino ? planetaDestino.nombre : "Sector Desconocido";
@@ -206,14 +213,15 @@ function TarjetaMisionGlobal({
     let faseActual = '';
     let pctProgreso = 0; 
 
+    // REEMPLAZAMOS TODOS LOS "relojGalactico" por "ahora"
     if (!estaDesplegada) {
         if (m.expira_en) {
-            const diff = m.expira_en - relojGalactico;
+            const diff = m.expira_en - ahora;
             if (diff <= 0) expirada = true;
             else tiempoRestanteStr = formatoTiempo(diff);
         }
     } else {
-        const msViajeTranscurridos = relojGalactico - m.fecha_despliegue;
+        const msViajeTranscurridos = ahora - m.fecha_despliegue;
         const msViajeIda = m.ms_viaje_ida || 0;
         const msEjecucion = m.ms_ejecucion || 60000;
 
@@ -224,7 +232,7 @@ function TarjetaMisionGlobal({
         } else {
             if (m.auto_ejecutar || m.fecha_inicio_ejecucion) {
                 const inicioEjecucion = m.fecha_inicio_ejecucion || (m.fecha_despliegue + msViajeIda);
-                const msEjecucionTranscurridos = relojGalactico - inicioEjecucion;
+                const msEjecucionTranscurridos = ahora - inicioEjecucion;
                 
                 if (msEjecucionTranscurridos < msEjecucion) {
                     faseActual = 'ejecutando_o_lista'; 
@@ -241,7 +249,7 @@ function TarjetaMisionGlobal({
                 pctProgreso = 100;
             }
         }
-    }
+        }
 
     const tiempoEjecucionDias = Number(m.tiempo_ejecucion) || 1;
 
@@ -313,7 +321,7 @@ function TarjetaMisionGlobal({
                         
                         <div style={{ fontSize: '0.8rem', color: '#ddd', marginTop: '10px' }}>
                             <div style={{ color: '#FFC107', fontWeight: 'bold', marginBottom: '4px' }}>🎁 Recompensas Est.:</div>
-                            <div>💰 {m.recompensa || 'Estándar'}</div>
+                            <div style={{ fontSize: '1rem', color: '#FFC107' }}>💰 {Number(m.recompensa || 0).toLocaleString('es-CL')} Créditos</div>
                             <div>⭐ +{m.xp ? Number(m.xp) : (m.cr_req || 1) * 150} XP</div>
                             {m.recompensa_especial && <div style={{ color: '#9C27B0', fontWeight: 'bold', marginTop: '4px' }}>✨ {m.recompensa_especial}</div>}
                         </div>
@@ -431,7 +439,6 @@ export default function MapaEstelar() {
     const [modoConexion, setModoConexion] = useState(null);
     const [escuadronSeleccionado, setEscuadronSeleccionado] = useState(null);
     const [rutaPrevisualizada, setRutaPrevisualizada] = useState(null);
-    const [relojGalacticoUI, setRelojGalacticoUI] = useState(Date.now()); // Para barras y textos
     const [relojGalacticoMapa, setRelojGalacticoMapa] = useState(Date.now()); // Para el mapa y DB
     const [modoMoverPines, setModoMoverPines] = useState(false);
 
@@ -456,7 +463,7 @@ export default function MapaEstelar() {
         return () => unsubscribe();
     }, []); 
 
-const aplicarNuevoTiempo = async () => {
+    const aplicarNuevoTiempo = async () => {
         const nuevoValor = Number(inputMinutos);
         if (nuevoValor <= 0 || isNaN(nuevoValor)) return alert("Valor inválido.");
 
@@ -537,18 +544,13 @@ const aplicarNuevoTiempo = async () => {
     }, []);
 
     useEffect(() => {
-        // 1. RELOJ RÁPIDO (Para la interfaz y barras de progreso)
-        const intUI = setInterval(() => {
-            setRelojGalacticoUI(Date.now());
-        }, 1000);
-
-        // 2. RELOJ LENTO (Para mover la nave en el mapa y revisar Firebase)
+        // EL MAPA VUELVE A LA TRANQUILIDAD DE LOS 5 SEGUNDOS
         const intMapa = setInterval(() => {
-            const ahora = Date.now();
-            setRelojGalacticoMapa(ahora);
+            const tiempoActual = Date.now();
+            setRelojGalacticoMapa(tiempoActual);
             
             escuadrones.forEach(async esc => {
-                if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_llegada <= ahora) {
+                if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_llegada <= tiempoActual) {
                     await updateDoc(doc(db, "escuadrones", esc.id), {
                         estado_movimiento: 'Estacionado', ubicacion_actual_id: esc.ubicacion_destino_id, ubicacion_destino_id: null,
                         coords_espacio_profundo: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null
@@ -558,16 +560,13 @@ const aplicarNuevoTiempo = async () => {
             });
         }, 5000);
 
-        return () => {
-            clearInterval(intUI);
-            clearInterval(intMapa);
-        };
+        return () => clearInterval(intMapa);
     }, [escuadrones, recargarTodo]);
 
     const cancelarTodo = () => { setModoConexion(null); setEscuadronSeleccionado(null); setRutaPrevisualizada(null); };
     const iniciarNavegacion = (esc) => { cancelarTodo(); setEscuadronSeleccionado(esc); };
 
-const previsualizarRuta = (destino) => {
+    const previsualizarRuta = (destino) => {
         if (!escuadronSeleccionado) return;
         const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(escuadronSeleccionado.nave_id)) : null;
         
@@ -741,7 +740,6 @@ const previsualizarRuta = (destino) => {
         setAlertaAborto(null); recargarTodo();
     };
 
-    // --- RESTAURADA: FUNCIÓN RESOLVER MISIÓN ---
     const resolverMision = async (mision, probExitoReal, crFuerzaTotal) => {
         const asignados = mision.escuadrones_id || [];
         if (asignados.length === 0) return alert("No hay tropas asignadas.");
@@ -758,7 +756,10 @@ const previsualizarRuta = (destino) => {
 
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
-        const recompensaObtenida = exito ? (mision.recompensa || "Pago Estándar") : "Ninguna";
+        
+        // --- LÓGICA DE PAGO ECONÓMICO ---
+        const creditosEnJuego = Number(mision.recompensa) || 0;
+        const recompensaObtenida = exito ? `${creditosEnJuego} Créditos` : "Ninguna";
 
         let multDif = 1;
         const crTarget = Math.round(crFuerzaTotal);
@@ -863,6 +864,24 @@ const previsualizarRuta = (destino) => {
             });
         }
 
+        // --- REALIZAR LA TRANSFERENCIA BANCARIA ---
+        if (exito && creditosEnJuego > 0) {
+            // Buscamos al dueño del primer escuadrón asignado para pagarle
+            const escLider = escuadrones.find(e => String(e.id) === String(asignados[0]));
+            if (escLider && escLider.faccion) {
+                try {
+                    await updateDoc(doc(db, "comandantes", escLider.faccion), {
+                        creditos: increment(creditosEnJuego)
+                    });
+                } catch (err) {
+                    console.error("Error al transferir fondos al banco:", err);
+                }
+            }
+        }
+
+        // (Esto ya lo tenías, déjalo igual)
+        await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
+
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
         
         setReporteAAR({
@@ -900,6 +919,48 @@ const previsualizarRuta = (destino) => {
         return true;
     });
 
+    // OPTIMIZACIÓN DEL MAPA: Evita que Leaflet colapse al hacer zoom rápido
+    const rutasEstaticas = useMemo(() => {
+        return planetas.flatMap(p => (p.conexiones || []).map(tId => {
+            const t = planetas.find(x => String(x.id) === String(tId));
+            return t ? <Polyline key={`${p.id}-${t.id}`} positions={[p.coords, t.coords]} color={p.tieneRele && t.tieneRele ? "#9aa8a9" : "#ff9900"} weight={8} opacity={0.3} /> : null;
+        }));
+    }, [planetas]);
+
+    const marcadoresEscuadrones = useMemo(() => {
+        return (
+            <>
+                {escuadrones.filter(e => e.estado_movimiento === 'En Tránsito').map(esc => {
+                    const pos = calcularPosicionEnRuta(esc, relojGalacticoMapa);
+                    if (!pos) return null;
+                    const coordsRuta = esc.ruta_visual ? esc.ruta_visual.map(p => [p.y, p.x]) : [];
+                    const colorEstela = "#de0000"; 
+                    return (
+                        <div key={`viaje-${esc.id}`}>
+                            {coordsRuta.length > 0 && <Polyline positions={coordsRuta} color={colorEstela} weight={3} dashArray="5, 10" className="ruta-animada" opacity={0.9} />}
+                            <CircleMarker center={pos} radius={6} pathOptions={{ color: '#fff', fillColor: colorEstela, fillOpacity: 1, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
+                                <Tooltip direction="bottom" offset={[0, 5]}>
+                                    <div style={{ textAlign: 'center' }}>
+                                        <strong>{esc.nombre}</strong><br/>
+                                        <span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                            ETA: {Math.max(0, ((esc.fecha_llegada - relojGalacticoMapa) / 60000)).toFixed(1)} mins
+                                        </span>
+                                    </div>
+                                </Tooltip>
+                            </CircleMarker>
+                        </div>
+                    );
+                })}
+
+                {escuadrones.filter(e => e.estado_movimiento === 'Estacionado' && !e.ubicacion_actual_id && e.coords_espacio_profundo).map(esc => (
+                    <CircleMarker key={`deep-${esc.id}`} center={[esc.coords_espacio_profundo.y, esc.coords_espacio_profundo.x]} radius={5} pathOptions={{ color: '#F44336', fillColor: '#F44336', fillOpacity: 0.8, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
+                        <Tooltip direction="top" offset={[0, -5]}><div style={{ textAlign: 'center' }}><strong style={{ color: '#F44336' }}>{esc.nombre}</strong><br/><span style={{ fontSize: '0.7rem', color: '#aaa' }}>🚨 Varado en espacio profundo</span></div></Tooltip>
+                    </CircleMarker>
+                ))}
+            </>
+        );
+    }, [escuadrones, relojGalacticoMapa, esGM, userRole]);
+
     return (
         <div style={{ display: 'flex', height: '85vh', backgroundColor: '#0a0a0f', color: '#fff', fontFamily: 'monospace' }}>
             
@@ -910,38 +971,13 @@ const previsualizarRuta = (destino) => {
                     <HerramientaCoordenadas onMapClick={(c) => { if(esGM) { setCoordsClic(c); setPlanetaAEditar(null); setModalOpen(true); } }} modoConexion={!!modoConexion} modoNavegacion={!!escuadronSeleccionado} cancelarModos={cancelarTodo} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} />
                     <AutoCentrarMapa planetaSel={planetaSel} origenSeleccion={origenSeleccion} vuelaACoords={vueloDirecto} />
 
-                    {planetas.flatMap(p => (p.conexiones || []).map(tId => {
-                        const t = planetas.find(x => x.id === tId);
-                        return t ? <Polyline key={`${p.id}-${t.id}`} positions={[p.coords, t.coords]} color={p.tieneRele && t.tieneRele ? "#9aa8a9" : "#ff9900"} weight={8} opacity={0.3} /> : null;
-                    }))}
-
+                    {/* USAMOS LOS BLOQUES OPTIMIZADOS AQUÍ */}
+                    {rutasEstaticas}
                     {rutaPrevisualizada && <Polyline positions={rutaPrevisualizada.puntos.map(p => p.coords)} color="#000000" weight={4} dashArray="5, 10" />}
-
                     <CapaDinamicaPlanetas planetas={planetas} escuadrones={escuadrones} misiones={misiones} planetaSelId={planetaSelId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} modoConexion={modoConexion} ejecutarConexion={ejecutarConexion} escuadronSeleccionado={escuadronSeleccionado} previsualizarRuta={previsualizarRuta} modoMoverPines={modoMoverPines} guardarNuevasCoords={guardarNuevasCoords} />
-
-                    {escuadrones.filter(e => e.estado_movimiento === 'En Tránsito').map(esc => {
-                        const pos = calcularPosicionEnRuta(esc, relojGalacticoMapa);
-                        if (!pos) return null;
-                        const coordsRuta = esc.ruta_visual ? esc.ruta_visual.map(p => [p.y, p.x]) : [];
-                        const colorEstela = "#de0000"; 
-                        return (
-                            <div key={`viaje-${esc.id}`}>
-                                {coordsRuta.length > 0 && <Polyline positions={coordsRuta} color={colorEstela} weight={3} dashArray="5, 10" className="ruta-animada" opacity={0.9} />}
-                                <CircleMarker center={pos} radius={6} pathOptions={{ color: '#fff', fillColor: colorEstela, fillOpacity: 1, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
-                                    <Tooltip direction="bottom" offset={[0, 5]}>
-                                        <div style={{ textAlign: 'center' }}><strong>{esc.nombre}</strong><br/><span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>ETA: {Math.max(0, ((esc.fecha_llegada - relojGalacticoUI) / 60000)).toFixed(1)} mins</span></div>
-                                    </Tooltip>
-                                </CircleMarker>
-                            </div>
-                        );
-                    })}
-
-                    {escuadrones.filter(e => e.estado_movimiento === 'Estacionado' && !e.ubicacion_actual_id && e.coords_espacio_profundo).map(esc => (
-                        <CircleMarker key={`deep-${esc.id}`} center={[esc.coords_espacio_profundo.y, esc.coords_espacio_profundo.x]} radius={5} pathOptions={{ color: '#F44336', fillColor: '#F44336', fillOpacity: 0.8, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
-                            <Tooltip direction="top" offset={[0, -5]}><div style={{ textAlign: 'center' }}><strong style={{ color: '#F44336' }}>{esc.nombre}</strong><br/><span style={{ fontSize: '0.7rem', color: '#aaa' }}>🚨 Varado en espacio profundo</span></div></Tooltip>
-                        </CircleMarker>
-                    ))}
-                </MapContainer>
+                    {marcadoresEscuadrones}
+                    
+                </MapContainer> 
 
                 {/* BOTÓN SECRETO DEL GM PARA EL TIEMPO */}
                 {esGM && (
@@ -1040,7 +1076,7 @@ const previsualizarRuta = (destino) => {
                             {pestanaGlobal === 'misiones' && (
                                 misionesFiltradas.length === 0 ? <p style={{ textAlign: 'center', color: '#555', marginTop: '40px', fontStyle: 'italic' }}>No hay contratos con esos filtros.</p>
                                 : misionesFiltradas.map(m => (
-                                    <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalacticoUI} isGlobalContext={true} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />
+                                    <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} isGlobalContext={true} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />
                                 ))
                             )}
                             {pestanaGlobal === 'escuadrones' && (
@@ -1108,7 +1144,7 @@ const previsualizarRuta = (destino) => {
                                         <p style={{ fontSize: '0.8rem', color: '#555' }}>No hay operaciones activas aquí.</p>
                                     ) : (
                                         misiones.filter(m => String(m.ubicacion_id) === String(planetaSel.id)).map(m => (
-                                            <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} relojGalactico={relojGalacticoUI} isGlobalContext={false} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />                                        
+                                            <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole}  isGlobalContext={false} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />                                        
                                         ))
                                     )}
                                     {/* BOTÓN EXCLUSIVO DEL GM PARA CREAR CONTRATO AQUÍ */}
