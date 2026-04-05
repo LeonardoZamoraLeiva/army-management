@@ -5,18 +5,19 @@ import { useData } from '../context/DataContext';
 
 // DICCIONARIO CENTRAL DE ESPECIALIDADES
 const LISTA_ESPECIALIDADES = [
-    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina de Combate", "Criptografía", "Astronavegación"] },
-    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador"] },
-    { grupo: "Combate Especializado (STR/CON)", items: ["Demoliciones", "Artillería Pesada", "CQC", "Supervivencia"] },
-    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión / Engaño"] },
-    { grupo: "Anomalías / Poderes (Especial)", items: ["Percepción Aumentada", "Habilidades especiales", "Piloto de Combate"] },
-    { grupo: "Extras raros", items: ["Usuario Nen"] }
+    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
+    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
+    { grupo: "Combate Especializado (STR/CON)", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas", "Atleta"] },
+    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión", "Engaño", "Gestión", "Apostador"] },
+    { grupo: "Conocimiento (SAB)", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
+    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] },
+    { grupo: "Extras Raros (SOLO GM)", items: ["Nen", "Suerte", "Biótico", "Psíquico", "Cibernético"] }
 ];
 
 const NIVELES_DESBLOQUEO = [6, 11, 16, 20];
 
 export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
-    const { recargarTodo, userRole } = useData();
+    const { recargarTodo, userRole, comandantes } = useData();
     const [tabActiva, setTabActiva] = useState('personal');
     
     const esEdicion = soldadoData && soldadoData.id;
@@ -35,6 +36,9 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
     };
 
     const [formData, setFormData] = useState(estadoInicial);
+
+    
+
 
     useEffect(() => {
         if (soldadoData) {
@@ -81,14 +85,32 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
         setFormData(prev => ({ ...prev, especialidades: nuevasEsp }));
     };
 
+
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (esEdicion) await updateDoc(doc(db, "soldados", soldadoData.id), formData);
-            else await addDoc(collection(db, "soldados"), formData);
+            // Creamos una copia de los datos para no mutar el estado directamente
+            let dataToSave = { ...formData };
+            const now = Date.now();
+
+            if (esEdicion) {
+                // Si cambiamos la salud respecto a como estaba antes, reiniciamos el reloj
+                if (soldadoData && dataToSave.estado_salud !== soldadoData.estado_salud) {
+                    dataToSave.fecha_estado = now;
+                }
+                await updateDoc(doc(db, "soldados", soldadoData.id), dataToSave);
+            } else {
+                // Si es un soldado nuevo, le ponemos el reloj de inmediato
+                dataToSave.fecha_estado = now;
+                await addDoc(collection(db, "soldados"), dataToSave);
+            }
+
             await recargarTodo();
             onClose();
-        } catch (error) { console.error("Error al guardar soldado:", error); }
+        } catch (error) { 
+            console.error("Error al guardar soldado:", error); 
+        }
     };
 
     const handleDelete = async () => {
@@ -132,19 +154,27 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <div className="grupo-input" style={{ flex: 1 }}>
                                     <label>Facción Asignada:</label>
-                                    <select name="lider" value={formData.lider} onChange={handleChange} disabled={!esGM} style={estiloLock}>
-                                        <option value="Libres">Fuerzas de Reserva</option>
-                                        <option value="H">H</option>
-                                        <option value="William">William</option>
-                                        <option value="Cazador">Cazador</option>
-                                        <option value="Brick">Brick</option>
-                                        <option value="Lucian">Lucian</option>
+                                    <select 
+                                        name="lider" 
+                                        value={formData.lider} 
+                                        onChange={handleChange} 
+                                        disabled={!esGM} 
+                                        style={estiloLock}
+                                    >
+
+                                        {/* Mapeo dinámico de comandantes registrados */}
+                                        {comandantes && comandantes.map(f => (
+                                            <option key={f.id} value={f.nombre}>
+                                                🏳️ {f.nombre}
+                                            </option>
+                                        ))}
                                     </select>
-                                    {!esGM && <small style={{ color: '#888' }}>Asignación automática</small>}
+                                    {!esGM && <small style={{ color: '#888' }}>Asignación automática por mando central</small>}
                                 </div>
                                 <div className="grupo-input" style={{ flex: 1 }}><label>Género:</label><select name="genero" value={formData.genero} onChange={handleChange}><option value="Masculino">Masculino</option><option value="Femenino">Femenino</option><option value="Otro">Otro / Máquina</option></select></div>
                                 <div className="grupo-input" style={{ flex: 2 }}><label>URL Fotografía:</label><input type="url" name="foto" value={formData.foto} onChange={handleChange} placeholder="https://..." /></div>
                             </div>
+
 
                             <div style={{ display: 'flex', gap: '10px', padding: '10px', backgroundColor: '#111118', borderRadius: '6px', border: '1px solid #3f3f5a' }}>
                                 <div className="grupo-input" style={{ flex: 1, margin: 0 }}>
@@ -210,11 +240,11 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                         </div>
                     )}
 
-                    {/* NUEVA PESTAÑA DE ESPECIALIDADES */}
+{/* PESTAÑA DE ESPECIALIDADES */}
                     {tabActiva === 'especialidades' && (
                         <div style={{ animation: 'fadeIn 0.2s ease' }}>
                             <p style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '15px', lineHeight: '1.4' }}>
-                                Los operativos ganan especialidades tácticas al alcanzar los <b>niveles 6, 11, 16 y 20</b>. Puedes escoger la misma mas de una vez. 
+                                Los operativos ganan especialidades tácticas al alcanzar los <b>niveles 6, 11, 16 y 20</b>. Puedes escoger la misma mas de una vez. <b style={{color: 'red'}}>Una vez escogidas, no pueden ser modificadas.</b>
                                 {!esGM && <span style={{ color: '#F44336' }}> Una vez asignada y guardada una especialidad, solo el GM puede revocarla.</span>}
                             </p>
 
@@ -239,18 +269,87 @@ export default function ModalSoldado({ isOpen, onClose, soldadoData }) {
                                                 style={{ width: '100%', padding: '8px', backgroundColor: bloqueado ? '#000' : '#111', color: tieneNivel ? '#00BCD4' : '#555', border: '1px solid #333', borderRadius: '4px', outline: 'none', cursor: bloqueado ? 'not-allowed' : 'pointer' }}
                                             >
                                                 <option value="">-- Sin Especialidad --</option>
-                                                {LISTA_ESPECIALIDADES.map((categoria, catIdx) => (
-                                                    <optgroup key={catIdx} label={categoria.grupo}>
-                                                        {categoria.items.map(item => (
-                                                            <option key={item} value={item}>{item}</option>
-                                                        ))}
-                                                    </optgroup>
-                                                ))}
+                                                {LISTA_ESPECIALIDADES.map((categoria, catIdx) => {
+                                                    // Filtro de seguridad: Ocultar los "Extras Raros" a los jugadores normales
+                                                    if (categoria.grupo === "Extras Raros (SOLO GM)" && !esGM) return null;
+                                                    
+                                                    return (
+                                                        <optgroup key={catIdx} label={categoria.grupo}>
+                                                            {categoria.items.map(item => (
+                                                                <option key={item} value={item}>{item}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
                                             </select>
                                         </div>
                                     );
                                 })}
                             </div>
+
+                            {/* ESPECIALIDADES EXTRA DINÁMICAS (SOLO GM) */}
+                            {esGM && (
+                                <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#111118', border: '1px dashed #00BCD4', borderRadius: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, color: '#00BCD4' }}>👁️ Especialidades Extra (Adquiridas por Rol)</h4>
+                                            <p style={{ fontSize: '0.75rem', color: '#888', margin: '2px 0 0 0' }}>Solo visibles por el GM.</p>
+                                        </div>
+                                        
+                                        <button 
+                                            type="button"
+                                            onClick={() => {
+                                                const nuevasEsp = [...(formData.especialidades || [])];
+                                                while(nuevasEsp.length < 4) nuevasEsp.push(""); 
+                                                nuevasEsp.push("");
+                                                setFormData({ ...formData, especialidades: nuevasEsp });
+                                            }}
+                                            style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                        >
+                                            + Agregar Extra
+                                        </button>
+                                    </div>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                        {(formData.especialidades || []).map((esp, index) => {
+                                            if (index < 4) return null;
+
+                                            return (
+                                                <div key={`extra-${index}`} className="grupo-input" style={{ margin: 0 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                        <label style={{ color: '#00BCD4', fontSize: '0.8rem' }}>Extra {index - 3}:</label>
+                                                        <span 
+                                                            style={{ color: '#F44336', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                                            onClick={() => {
+                                                                const nuevasEsp = [...formData.especialidades];
+                                                                nuevasEsp.splice(index, 1);
+                                                                setFormData({ ...formData, especialidades: nuevasEsp });
+                                                            }}
+                                                        >
+                                                            ✖ Quitar
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <select 
+                                                        value={esp || ''} 
+                                                        onChange={(e) => handleEspecialidadChange(index, e.target.value)} 
+                                                        style={{ width: '100%', padding: '8px', backgroundColor: '#111', color: '#fff', border: '1px solid #00BCD4', borderRadius: '4px' }}
+                                                    >
+                                                        <option value="">-- Seleccionar --</option>
+                                                        {LISTA_ESPECIALIDADES.map((categoria, catIdx) => (
+                                                            <optgroup key={catIdx} label={categoria.grupo}>
+                                                                {categoria.items.map(item => (
+                                                                    <option key={item} value={item}>{item}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

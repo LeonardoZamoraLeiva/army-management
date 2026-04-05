@@ -5,412 +5,31 @@ import L from 'leaflet';
 import { useData } from '../context/DataContext';
 import { db } from '../firebase';
 import { updateDoc, doc, collection, onSnapshot, deleteDoc, arrayUnion, setDoc, increment } from 'firebase/firestore';
+
+// --- IMPORTACIONES DE NUESTROS NUEVOS ARCHIVOS DE UTILIDAD ---
+import { DANGER_TABLE, TABLA_XP_DND } from '../utils/constantesJuego';
+import { formatoTiempo, calcularPosicionEnRuta, getAtributosAstro } from '../utils/helpersMapa';
+
 import ModalPlaneta from './ModalPlaneta';
 import ModalMision from './ModalMision'; 
 import ModalDesplegar from './ModalDesplegar'; 
 import ModalAAR from './ModalAAR'; 
 import { getMoralData, calcularTREscuadron } from './Escuadrones';
-import {calcularPlanDeVuelo } from '../utils/navegacion';
+import { calcularPlanDeVuelo } from '../utils/navegacion';
 import { calcularDistanciaPitagorica } from '../utils/motorEstelar';
+import { GiCreditsCurrency } from 'react-icons/gi';
+import PanelHolografico from './PanelHolografico';
 
-const svgNave = `<svg viewBox="0 0 24 24" width="14" height="14" stroke="white" stroke-width="2" stroke-linejoin="round" fill="none"><polygon points="12 2 2 22 12 17 22 22 12 2"></polygon></svg>`;
-
-const iconoNaveEnVuelo = L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div style='background-color: #de0000; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px #de0000;'>${svgNave}</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13]
-});
-
-const DANGER_TABLE = {
-    'Baja': { win: { hit_chance: 5 }, fail: { hit_chance: 30 } },
-    'Media': { win: { hit_chance: 15 }, fail: { hit_chance: 60 } },
-    'Alta': { win: { hit_chance: 30 }, fail: { hit_chance: 85 } },
-    'Extrema': { win: { hit_chance: 40 }, fail: { hit_chance: 100 } }
-};
-
-const TABLA_XP_DND = [
-    0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 
-    85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000
-];
-
-const formatoTiempo = (ms) => {
-    if (ms <= 0) return "00:00:00";
-    const h = Math.floor(ms / (1000 * 60 * 60));
-    const min = Math.floor((ms / 1000 / 60) % 60);
-    const sec = Math.floor((ms / 1000) % 60);
-    return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-};
-
-const calcularPosicionEnRuta = (esc, ahora) => {
-    if (!esc.ruta_visual || esc.ruta_visual.length === 0) return null;
-    if (ahora >= esc.fecha_llegada) return [esc.ruta_visual[esc.ruta_visual.length - 1].y, esc.ruta_visual[esc.ruta_visual.length - 1].x];
-    const progreso = Math.max(0, (ahora - esc.fecha_salida) / (esc.fecha_llegada - esc.fecha_salida));
-    let distTotal = 0; const dists = [];
-    for (let i = 0; i < esc.ruta_visual.length - 1; i++) {
-        const p1 = esc.ruta_visual[i], p2 = esc.ruta_visual[i+1];
-        const d = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-        distTotal += d; dists.push(d);
-    }
-    let distObjetivo = distTotal * progreso, segmento = 0;
-    while (segmento < dists.length && distObjetivo > dists[segmento]) { distObjetivo -= dists[segmento]; segmento++; }
-    if (segmento >= dists.length) segmento = dists.length - 1;
-    const p1 = esc.ruta_visual[segmento], p2 = esc.ruta_visual[segmento + 1] || p1;
-    const fraccion = dists[segmento] > 0 ? distObjetivo / dists[segmento] : 0;
-    return [p1.y + (p2.y - p1.y) * fraccion, p1.x + (p2.x - p1.x) * fraccion];
-};
+import RelojETA from './RelojETA';
+import { EscuadronEnTransito } from './mapa/CapaEscuadrones';
+import { CapaDinamicaPlanetas } from './mapa/CapaPlanetas';
+import { HerramientaMapaEventos, AutoCentrarMapa } from './mapa/HerramientasMapa';
+import TarjetaMisionGlobal from './TarjetaMisionGlobal';
 
 
-function HerramientaCoordenadas({ onMapClick, modoConexion, modoNavegacion, cancelarModos, setPlanetaSelId, setOrigenSeleccion }) {
-    useMapEvents({
-        click(e) {
-            if (modoConexion || modoNavegacion) { cancelarModos(); return; }
-            setOrigenSeleccion('mapa'); 
-            setPlanetaSelId(null); 
-            onMapClick([Math.round(e.latlng.lat), Math.round(e.latlng.lng)]);
-        },
-    });
-    return null;
-}
-
-function AutoCentrarMapa({ planetaSel, origenSeleccion, vuelaACoords }) {
-    const mapa = useMap();
-    useEffect(() => {
-        if (planetaSel && origenSeleccion === 'tablon') {
-            mapa.flyTo(planetaSel.coords, 2, { animate: true, duration: 1.5 });
-        } else if (vuelaACoords) {
-            mapa.flyTo(vuelaACoords, 1, { animate: true, duration: 1.5 });
-        }
-    }, [planetaSel, origenSeleccion, vuelaACoords, mapa]);
-    return null;
-}
-
-const getAtributosAstro = (tipo, tieneRele) => {
-    const t = tipo || 'Planeta'; 
-    switch(t) {
-        case 'Planeta': return { colorFondo: tieneRele ? '#00BCD4' : '#FF9800', radioBásico: 6 };
-        case 'Rele': return { colorFondo: '#9C27B0', radioBásico: 5 }; 
-        case 'Estacion': return { colorFondo: '#E91E63', radioBásico: 5 }; 
-        case 'Luna': return { colorFondo: '#B0BEC5', radioBásico: 4 }; 
-        case 'Asteroide': return { colorFondo: '#795548', radioBásico: 3 }; 
-        default: return { colorFondo: '#FF9800', radioBásico: 6 };
-    }
-};
-
-function CapaDinamicaPlanetas({ planetas, escuadrones, misiones, planetaSelId, setPlanetaSelId, setOrigenSeleccion, modoConexion, ejecutarConexion, escuadronSeleccionado, previsualizarRuta, modoMoverPines, guardarNuevasCoords }) {
-    const mapa = useMap();
-    const [zoomActual, setZoomActual] = useState(mapa.getZoom());
-    useMapEvents({ zoomend() { setZoomActual(mapa.getZoom()); } });
-
-    return (
-        <>
-            {planetas.map(planeta => {
-                const tipo = planeta.tipo || 'Planeta';
-                if (zoomActual <= -2 && tipo !== 'Planeta') return null; 
-                if (zoomActual === -1 && !['Planeta', 'Rele', 'Estacion'].includes(tipo)) return null; 
-
-                const escuadronesAqui = escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planeta.id) && e.estado_movimiento !== 'En Tránsito');
-                const misionesAqui = misiones.filter(m => String(m.ubicacion_id) === String(planeta.id));
-                const n = escuadronesAqui.length; const y = misionesAqui.length;
-
-                const esSeleccionado = String(planetaSelId) === String(planeta.id);
-                const vistoDeLejos = zoomActual <= -2;
-                const astro = getAtributosAstro(tipo, planeta.tieneRele);
-                const esOrigenRuta = modoConexion && String(modoConexion.id) === String(planeta.id);
-                
-                const bordeColor = esOrigenRuta ? '#fff' : (esSeleccionado ? '#fff' : (n > 0 ? '#031c04' : astro.colorFondo));
-                const grosorBorde = esOrigenRuta || esSeleccionado ? 4 : (n > 0 ? 3 : 2);
-                const radioFinal = esSeleccionado ? astro.radioBásico + 3 : astro.radioBásico;
-
-                const contenidoTooltip = (
-                    <Tooltip direction="top" offset={[0, vistoDeLejos ? -30 : -10]}>
-                        <div style={{ textAlign: 'center', fontFamily: 'monospace' }}>
-                            <strong style={{ display: 'block', fontSize: '1rem' }}>{planeta.nombre}</strong>
-                            <span style={{ fontSize: '0.7rem', color: '#141313', display: 'block', textTransform: 'uppercase' }}>{tipo}</span>
-                            {n > 0 && <span style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '0.8rem', display: 'block', marginTop: '4px' }}>🛰️ Tropas estacionadas ({n})</span>}
-                            {y > 0 && <span style={{ color: '#FFC107', fontWeight: 'bold', fontSize: '0.8rem', display: 'block', marginTop: '2px' }}>📜 Misiones disponibles ({y})</span>}
-                        </div>
-                    </Tooltip>
-                );
-
-                const handleClick = (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    if (modoConexion) ejecutarConexion(planeta, (modoConexion.conexiones || []).includes(planeta.id));
-                    else if (escuadronSeleccionado) { previsualizarRuta(planeta); setPlanetaSelId(planeta.id); } 
-                    else {
-                        setOrigenSeleccion('mapa'); 
-                        setPlanetaSelId(planeta.id);
-                    }
-                };
-
-                if (modoMoverPines) {
-                    return (
-                        <Marker key={`drag-${planeta.id}`} position={planeta.coords} draggable={true} eventHandlers={{ dragend: (e) => guardarNuevasCoords(planeta.id, e.target.getLatLng()) }}>
-                            <Tooltip permanent direction="top">🔄 Arrástrame: {planeta.nombre}</Tooltip>
-                        </Marker>
-                    );
-                }
-
-                const iconoAlfiler = L.divIcon({
-                    className: 'alfiler-tactico',
-                    html: `
-                        <div style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0px 0px 4px ${astro.colorFondo}); opacity: 0.9;">
-                            <div style="width: 10px; height: 10px; border-radius: 50%; background-color: ${astro.colorFondo}; border: 1px solid #fff;"></div>
-                            <div style="width: 2px; height: 14px; background-color: ${astro.colorFondo};"></div>
-                        </div>
-                    `,
-                    iconSize: [10, 24], iconAnchor: [5, 24]
-                });
-
-                return vistoDeLejos ? (
-                    <Marker key={`pin-${planeta.id}`} position={planeta.coords} icon={iconoAlfiler} eventHandlers={{ click: handleClick }}>{contenidoTooltip}</Marker>
-                ) : (
-                    <CircleMarker 
-                        key={`dot-${planeta.id}`} center={planeta.coords} radius={radioFinal} 
-                        pathOptions={{ color: bordeColor, fillColor: astro.colorFondo, fillOpacity: 0.9, weight: grosorBorde, className: esSeleccionado ? 'planeta-seleccionado-glow' : '' }} 
-                        eventHandlers={{ click: handleClick }}
-                    >
-                        {contenidoTooltip}
-                    </CircleMarker>
-                );
-            })}
-        </>
-    );
-}
-
-// SUB-COMPONENTE: Tarjeta de Misión Unificada
-function TarjetaMisionGlobal({ 
-    m, planetas, escuadrones, soldados, vehiculos, equipo, esGM, userRole, 
-    isGlobalContext, misionExpandida, setMisionExpandida, setPlanetaSelId, setOrigenSeleccion, 
-    setMisionParaEditar, setIsModalMisionOpen, setMisionActiva, setIsModalDesplegarOpen, 
-    iniciarEjecucionManual, solicitarAbortoMision, setAlertaAborto, eliminarMision, solicitarDespliegueMision,
-    onDropEscuadron, onDragOver, resolverMision 
-}) {
-    // NUEVO: El reloj rápido ahora vive EXCLUSIVAMENTE dentro de la tarjeta
-    const [ahora, setAhora] = useState(Date.now());
-    useEffect(() => {
-        const timer = setInterval(() => setAhora(Date.now()), 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    const isExpanded = misionExpandida === m.id;
-    const planetaDestino = planetas.find(p => String(p.id) === String(m.ubicacion_id));
-    const nombrePlaneta = planetaDestino ? planetaDestino.nombre : "Sector Desconocido";
-    
-    const coloresRango = { 'E': '#9E9E9E', 'D': '#4CAF50', 'C': '#00BCD4', 'B': '#FFEB3B', 'A': '#FF9800', 'S': '#F44336', 'SS': '#9C27B0' };
-    const coloresPeligro = { 'Baja': '#4CAF50', 'Media': '#FFEB3B', 'Alta': '#FF9800', 'Extrema': '#F44336' };
-    const colorRango = coloresRango[m.rango] || '#fff';
-    const colorPeligro = coloresPeligro[m.peligrosidad] || '#fff';
-
-    const arrAsignados = m.escuadrones_id || [];
-    const escuadronesAsignados = arrAsignados.map(id => escuadrones.find(e => String(e.id) === String(id))).filter(Boolean);
-    const esNueva = arrAsignados.length === 0;
-    const estaPreparando = arrAsignados.length > 0 && !m.fecha_despliegue;
-    const estaDesplegada = !!m.fecha_despliegue;
-
-    let expirada = false;
-    let tiempoRestanteStr = "00:00:00";
-    let faseActual = '';
-    let pctProgreso = 0; 
-
-    // REEMPLAZAMOS TODOS LOS "relojGalactico" por "ahora"
-    if (!estaDesplegada) {
-        if (m.expira_en) {
-            const diff = m.expira_en - ahora;
-            if (diff <= 0) expirada = true;
-            else tiempoRestanteStr = formatoTiempo(diff);
-        }
-    } else {
-        const msViajeTranscurridos = ahora - m.fecha_despliegue;
-        const msViajeIda = m.ms_viaje_ida || 0;
-        const msEjecucion = m.ms_ejecucion || 60000;
-
-        if (msViajeTranscurridos < msViajeIda) {
-            faseActual = 'ida'; 
-            tiempoRestanteStr = formatoTiempo(msViajeIda - msViajeTranscurridos);
-            pctProgreso = Math.min(100, (msViajeTranscurridos / msViajeIda) * 100);
-        } else {
-            if (m.auto_ejecutar || m.fecha_inicio_ejecucion) {
-                const inicioEjecucion = m.fecha_inicio_ejecucion || (m.fecha_despliegue + msViajeIda);
-                const msEjecucionTranscurridos = ahora - inicioEjecucion;
-                
-                if (msEjecucionTranscurridos < msEjecucion) {
-                    faseActual = 'ejecutando_o_lista'; 
-                    tiempoRestanteStr = formatoTiempo(msEjecucion - msEjecucionTranscurridos);
-                    pctProgreso = Math.min(100, (msEjecucionTranscurridos / msEjecucion) * 100);
-                } else {
-                    faseActual = 'lista';
-                    tiempoRestanteStr = "00:00:00";
-                    pctProgreso = 100;
-                }
-            } else {
-                faseActual = 'esperando'; 
-                tiempoRestanteStr = "ESPERANDO ÓRDENES";
-                pctProgreso = 100;
-            }
-        }
-        }
-
-    const tiempoEjecucionDias = Number(m.tiempo_ejecucion) || 1;
-
-    let crFuerzaTotal = 0, probExito = 0;
-    if (!esNueva) {
-        let moralPromedio = 0;
-        escuadronesAsignados.forEach(esc => {
-            crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo);
-            moralPromedio += getMoralData(esc.moral).mod;
-        });
-        if (escuadronesAsignados.length > 0) moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
-        const baseProb = { 'E': 95, 'D': 95, 'C': 95, 'B': 90, 'A': 90, 'S': 80, 'SS': 50 }[m.rango] || 80;
-        const maxProb  = { 'E': 99, 'D': 99, 'C': 95, 'B': 95, 'A': 90, 'S': 85, 'SS': 80 }[m.rango] || 95;
-        const ratio_poder = Math.max(0.5, crFuerzaTotal / (m.cr_req || 1));
-        const modificadorPoder = (ratio_poder - 1) * 35; 
-        probExito = Math.min(maxProb, Math.max(5, baseProb + Math.round(modificadorPoder) + moralPromedio));
-    }
-
-    const handleToggle = (e) => { e.stopPropagation(); setMisionExpandida(isExpanded ? null : m.id); };
-
-    return (
-        <div 
-            style={{ position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: isExpanded ? '#1a1a24' : '#1a1a2e', padding: '12px', borderRadius: '6px', marginBottom: '12px', borderTop: isExpanded ? `4px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : '#00BCD4')}` : 'none', borderLeft: isExpanded ? 'none' : `4px solid ${estaDesplegada ? '#F44336' : '#FFC107'}`, cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }} 
-            onClick={handleToggle}
-            onDragOver={onDragOver}
-            onDrop={(e) => onDropEscuadron && onDropEscuadron(e, m)}
-        >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '24px', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, paddingRight: '10px' }}>
-                    <div className="texto-truncado" style={{ fontWeight: 'bold', fontSize: '0.9rem', color: expirada ? '#888' : '#fff', textDecoration: expirada ? 'line-through' : 'none' }} title={m.titulo}>
-                        {m.titulo}
-                    </div>
-                    {esGM && (
-                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                            <button onClick={(e) => { e.stopPropagation(); setMisionParaEditar(m); setIsModalMisionOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', opacity: 0.6 }} title="Editar">✏️</button>
-                            <button onClick={(e) => { e.stopPropagation(); eliminarMision(m); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', opacity: 0.6 }} title="Eliminar">🗑️</button>
-                        </div>
-                    )}
-                </div>
-                
-                <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                    <span style={{ fontSize: '0.65rem', padding: '2px 4px', borderRadius: '3px', backgroundColor: '#333', color: colorRango, border: `1px solid ${colorRango}` }}>{m.rango}</span>
-                    <span style={{ fontSize: '0.65rem', padding: '2px 4px', borderRadius: '3px', backgroundColor: '#333', color: colorPeligro, border: `1px solid ${colorPeligro}` }}>{m.peligrosidad}</span>
-                </div>
-            </div>
-            
-            {isExpanded && (
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '8px', animation: 'fadeIn 0.2s ease' }}>
-                    
-                    <div style={{ width: '100%', borderTop: '1px dashed #3f3f5a', borderBottom: '1px dashed #3f3f5a', padding: '12px 0' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#B0BEC5', marginBottom: '8px' }}>
-                            🏢 Contratista: <span style={{ fontWeight: 'bold', color: '#fff' }}>{m.contratista || 'Anónimo'}</span>
-                        </div>
-                        
-                        <p style={{ color: '#aaa', fontSize: '0.8rem', fontStyle: 'italic', margin: '0 0 12px 0' }}>{m.descripcion}</p>
-                        
-                        {m.requisitos && (
-                            <div style={{ fontSize: '0.75rem', color: '#FF9800', marginBottom: '10px', border: '1px solid #FF9800', padding: '4px', borderRadius: '4px' }}>
-                                ⚠️ <b>Requisitos:</b> {m.requisitos}
-                            </div>
-                        )}
-
-                        <div style={{ fontSize: '0.85rem', color: '#00BCD4', cursor: isGlobalContext ? 'pointer' : 'default', textDecoration: isGlobalContext ? 'underline' : 'none', marginBottom: '4px' }} onClick={(e) => { if(isGlobalContext){ e.stopPropagation(); setOrigenSeleccion('tablon'); setPlanetaSelId(m.ubicacion_id); }}}>
-                            📍 Ubicación: <b>{nombrePlaneta}</b>
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '6px' }}>
-                            ⏳ Tiempo de operación: <b>{tiempoEjecucionDias} mins</b>
-                        </div>
-                        
-                        <div style={{ fontSize: '0.8rem', color: '#ddd', marginTop: '10px' }}>
-                            <div style={{ color: '#FFC107', fontWeight: 'bold', marginBottom: '4px' }}>🎁 Recompensas Est.:</div>
-                            <div style={{ fontSize: '1rem', color: '#FFC107' }}>💰 {Number(m.recompensa || 0).toLocaleString('es-CL')} Créditos</div>
-                            <div>⭐ +{m.xp ? Number(m.xp) : (m.cr_req || 1) * 150} XP</div>
-                            {m.recompensa_especial && <div style={{ color: '#9C27B0', fontWeight: 'bold', marginTop: '4px' }}>✨ {m.recompensa_especial}</div>}
-                        </div>
-                    </div>
-
-                    <div style={{ backgroundColor: '#111', padding: '10px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
-                        {escuadronesAsignados.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
-                                {escuadronesAsignados.map(esc => {
-                                    let tiempoViajeEsc = 0;
-                                    let tipoViajeEsc = "";
-                                    if (!estaDesplegada) {
-                                        const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(esc.nave_id)) : null;
-                                        if (esc.ubicacion_actual_id && String(esc.ubicacion_actual_id) !== String(m.ubicacion_id)) {
-                                            const plan = calcularPlanDeVuelo(esc.ubicacion_actual_id, m.ubicacion_id, null, planetas, nave);
-                                            if (plan) { tiempoViajeEsc = plan.tiempoDias; tipoViajeEsc = `(${plan.tipo})`; }
-                                        } else if (esc.coords_espacio_profundo) {
-                                            const plan = calcularPlanDeVuelo(null, m.ubicacion_id, esc.coords_espacio_profundo, planetas, nave);
-                                            if (plan) { tiempoViajeEsc = plan.tiempoDias; tipoViajeEsc = `(${plan.tipo})`; }
-                                        }
-                                        } else {
-                                            tiempoViajeEsc = Math.round((m.ms_viaje_ida / 60000) * 10) / 10;
-                                        }
-
-                                    return (
-                                        <div key={esc.id} style={{ fontSize: '0.8rem', color: '#fff', borderBottom: '1px solid #222', paddingBottom: '2px' }}>
-                                            🛡️ {esc.nombre} <span style={{color: '#888'}}>(Viaje: {tiempoViajeEsc > 0 ? `${tiempoViajeEsc} mins ${tipoViajeEsc}` : 'En posición'})</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic', marginBottom: '10px' }}>Arrastra escuadrones aquí para asignar.</div>
-                        )}
-
-                        <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div>TR <b style={{color: '#00BCD4'}}>{esNueva ? "0.0" : crFuerzaTotal.toFixed(1)}</b> vs CR <b style={{color: '#F44336'}}>{m.cr_req}</b></div>
-                            <div>% Éxito: <b style={{color: probExito >= 50 ? '#4CAF50' : '#FF9800'}}>{esNueva ? "0" : probExito}%</b></div>
-                            <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
-                                % Riesgo: <span style={{color: '#F44336'}}>{DANGER_TABLE[m.peligrosidad || 'Media'].win.hit_chance}%</span> (éxito) | <span style={{color: '#F44336'}}>{DANGER_TABLE[m.peligrosidad || 'Media'].fail.hit_chance}%</span> (fracaso)
-                            </div>
-                        </div>
-                    </div>
-
-                    {estaDesplegada && (
-                        <div style={{ width: '100%', marginTop: '8px', backgroundColor: '#111', borderRadius: '4px', overflow: 'hidden', position: 'relative', border: '1px solid #333' }}>
-                            <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pctProgreso}%`, backgroundColor: faseActual === 'ida' ? 'rgba(0, 188, 212, 0.25)' : (faseActual === 'ejecutando_o_lista' ? 'rgba(244, 67, 54, 0.35)' : 'rgba(76, 175, 80, 0.3)'), transition: 'width 1s linear' }}></div>
-                            <div style={{ position: 'relative', zIndex: 1, padding: '6px', fontSize: '0.75rem', fontWeight: 'bold', color: faseActual === 'esperando' ? '#FFC107' : (faseActual === 'ida' ? '#00BCD4' : (faseActual === 'lista' ? '#4CAF50' : '#F44336')) }}>
-                                {faseActual === 'ida' && `🚀 EN TRÁNSITO (${tiempoRestanteStr})`}
-                                {faseActual === 'esperando' && `🛡️ ${tiempoRestanteStr}`}
-                                {faseActual === 'ejecutando_o_lista' && `⚔️ EJECUTANDO OPERACIÓN (${tiempoRestanteStr})`}
-                                {faseActual === 'lista' && `✅ OPERACIÓN FINALIZADA`}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* BOTONERA TÁCTICA */}
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '5px', flexWrap: 'wrap', width: '100%' }}>
-                        {!estaDesplegada && esNueva && (
-                            <button className="btn-accion" style={{ flex: 1, backgroundColor: expirada ? '#333' : '#F44336', color: expirada ? '#888' : '#fff', cursor: expirada ? 'not-allowed' : 'pointer' }} 
-                                onClick={(e) => { e.stopPropagation(); if (!expirada) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} disabled={expirada}>
-                                {expirada ? "Expirado" : "Asignar Fuerzas"}
-                            </button>
-                        )}
-                        {!estaDesplegada && estaPreparando && (
-                            <>
-                                <button className="btn-accion" style={{ flex: 1, backgroundColor: '#555', color: '#fff', fontSize: '0.85rem' }} onClick={(e) => { e.stopPropagation(); setMisionActiva(m); setIsModalDesplegarOpen(true); }}>⚙️ Reasignar</button>
-                                <button className="btn-accion" style={{ flex: 2, backgroundColor: '#4CAF50', color: '#fff', fontSize: '0.85rem', fontWeight: 'bold' }} onClick={(e) => { e.stopPropagation(); solicitarDespliegueMision(m); }}>🚀 Desplegar</button>
-                            </>
-                        )}
-                        {estaDesplegada && faseActual === 'esperando' && (
-                            <button className="btn-accion" style={{ width: '100%', backgroundColor: '#4CAF50', color: '#fff' }} onClick={(e) => { e.stopPropagation(); iniciarEjecucionManual(m.id); }}>▶ INICIAR OPERACIÓN</button>
-                        )}
-                        {estaDesplegada && faseActual === 'ida' && (
-                            <button className="btn-accion rojo" style={{ flex: 1 }} onClick={(e) => { e.stopPropagation(); solicitarAbortoMision(m); }}>🚨 Abortar Viaje</button>
-                        )}
-                        {estaDesplegada && faseActual === 'esperando' && (
-                            <button className="btn-accion rojo" style={{ flex: 1 }} onClick={(e) => { e.stopPropagation(); setAlertaAborto({ tipo: 'aborto_local', mision: m, planeta: nombrePlaneta }); }}>🛡️ Retirar Tropas</button>
-                        )}
-                        {estaDesplegada && faseActual === 'lista' && (
-                            <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem' }} onClick={(e) => { e.stopPropagation(); resolverMision(m, probExito, crFuerzaTotal); }}>▶ Resolver Misión</button>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
+// ============================================================================
+// COMPONENTE PRINCIPAL DEL MAPA
+// ============================================================================
 export default function MapaEstelar() {
     const { planetas, escuadrones, soldados, vehiculos, equipo, userRole, recargarTodo } = useData();
     const esGM = userRole === 'GM';
@@ -421,13 +40,12 @@ export default function MapaEstelar() {
     const [misionParaEditar, setMisionParaEditar] = useState(null);
     const [reporteAAR, setReporteAAR] = useState(null); 
 
-    const [pestanaGlobal, setPestanaGlobal] = useState('misiones'); 
-    const [planetaSelId, setPlanetaSelId] = useState(null);
-    const [origenSeleccion, setOrigenSeleccion] = useState(null); 
+    const [menuPrincipal, setMenuPrincipal] = useState(null); 
+    const [planetaVistoId, setPlanetaVistoId] = useState(null); 
+    const [misionVistaId, setMisionVistaId] = useState(null);   
+
     const [vueloDirecto, setVueloDirecto] = useState(null); 
-    
     const [filtroPlanetas, setFiltroPlanetas] = useState('');
-    const [misionExpandidaId, setMisionExpandidaId] = useState(null);
     const [mostrarFiltrosMision, setMostrarFiltrosMision] = useState(false);
     const [filtrosMision, setFiltrosMision] = useState({ rango: '', peligrosidad: '', minRecompensa: '', especial: false });
     
@@ -439,26 +57,34 @@ export default function MapaEstelar() {
     const [modoConexion, setModoConexion] = useState(null);
     const [escuadronSeleccionado, setEscuadronSeleccionado] = useState(null);
     const [rutaPrevisualizada, setRutaPrevisualizada] = useState(null);
-    const [relojGalacticoMapa, setRelojGalacticoMapa] = useState(Date.now()); // Para el mapa y DB
     const [modoMoverPines, setModoMoverPines] = useState(false);
 
     const [isModalDesplegarOpen, setIsModalDesplegarOpen] = useState(false);
     const [misionActiva, setMisionActiva] = useState(null);
 
-    // Agrega este estado
     const [minutosPorDia, setMinutosPorDia] = useState(1);
     const [inputMinutos, setInputMinutos] = useState(1); 
+    const [mostrarTiempo, setMostrarTiempo] = useState(false);
+
+    const toggleMenu = (menu) => { if (menuPrincipal === menu) cerrarHUD(); else { setMenuPrincipal(menu); setPlanetaVistoId(null); setMisionVistaId(null); } };
+    const cerrarHUD = () => { setMenuPrincipal(null); setPlanetaVistoId(null); setMisionVistaId(null); setModoMoverPines(false); setModoConexion(null); };
+    const volverAPlaneta = () => { setMisionVistaId(null); };
+    
+    const abrirPlaneta = (idPlaneta, conVuelo = true) => {
+        setPlanetaVistoId(idPlaneta); setMisionVistaId(null); setMenuPrincipal(null);
+        if (conVuelo) { const p = planetas.find(x => x.id === idPlaneta); if (p) setVueloDirecto(p.coords); }
+    };
+
+    const abrirMision = (mision) => {
+        setPlanetaVistoId(mision.ubicacion_id); setMisionVistaId(mision.id); setMenuPrincipal(null);
+        const p = planetas.find(x => x.id === mision.ubicacion_id); if (p) setVueloDirecto(p.coords);
+    };
 
     useEffect(() => {
         const unsubscribe = onSnapshot(doc(db, "configuracion", "tiempo_global"), (docSnap) => {
             if (docSnap.exists()) {
-                const val = docSnap.data().minutosPorDia || 1;
-                setMinutosPorDia(val);
-                setInputMinutos(val);
-            } else {
-                // AQUI ESTÁ EL CAMBIO: setDoc con merge: true
-                setDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: 1 }, { merge: true }).catch(e => console.error("Error creando config:", e));
-            }
+                const val = docSnap.data().minutosPorDia || 1; setMinutosPorDia(val); setInputMinutos(val);
+            } else { setDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: 1 }, { merge: true }).catch(e => console.error(e)); }
         });
         return () => unsubscribe();
     }, []); 
@@ -466,102 +92,40 @@ export default function MapaEstelar() {
     const aplicarNuevoTiempo = async () => {
         const nuevoValor = Number(inputMinutos);
         if (nuevoValor <= 0 || isNaN(nuevoValor)) return alert("Valor inválido.");
-
-        const factor = minutosPorDia > 0 ? (nuevoValor / minutosPorDia) : 1;
-        const ahora = Date.now();
-
-        // 1. Guardar la nueva escala
+        const factor = minutosPorDia > 0 ? (nuevoValor / minutosPorDia) : 1; const ahora = Date.now();
         await setDoc(doc(db, "configuracion", "tiempo_global"), { minutosPorDia: nuevoValor }, { merge: true });
 
-        // 2. Alterar Escuadrones en tránsito (Viajes normales)
         for (let esc of escuadrones) {
             if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_salida && esc.fecha_llegada) {
-                const elapsed = ahora - esc.fecha_salida;
-                const restante = esc.fecha_llegada - ahora;
-
-                // Solo recalcula si el viaje no ha terminado
-                if (restante > 0) {
-                    const nuevoElapsed = elapsed * factor;
-                    const nuevoRestante = restante * factor;
-                    
-                    await updateDoc(doc(db, "escuadrones", esc.id), {
-                        fecha_salida: ahora - nuevoElapsed,
-                        fecha_llegada: ahora + nuevoRestante
-                    });
-                }
+                const elapsed = ahora - esc.fecha_salida; const restante = esc.fecha_llegada - ahora;
+                if (restante > 0) { await updateDoc(doc(db, "escuadrones", esc.id), { fecha_salida: ahora - (elapsed * factor), fecha_llegada: ahora + (restante * factor) }); }
             }
         }
-
-        // 3. Alterar Misiones Desplegadas (Magia de reajuste temporal)
         for (let m of misiones) {
             if (m.estado === 'Desplegada') {
-                const updates = {};
-                updates.ms_viaje_ida = m.ms_viaje_ida * factor;
-                updates.ms_ejecucion = m.ms_ejecucion * factor;
-
-                // A. Reajustar la fase de Viaje de la misión
+                const updates = {}; updates.ms_viaje_ida = m.ms_viaje_ida * factor; updates.ms_ejecucion = m.ms_ejecucion * factor;
                 if (m.fecha_despliegue) {
                     const elapsedViaje = ahora - m.fecha_despliegue;
-                    
-                    if (elapsedViaje < m.ms_viaje_ida) {
-                        // Aún viajando hacia la misión
-                        updates.fecha_despliegue = ahora - (elapsedViaje * factor);
-                    } else {
-                        // Ya llegó, pero la misión sigue activa.
-                        // Pivoteamos la fecha en que llegó para que no afecte el inicio de la ejecución.
-                        const tiempoDesdeLlegada = ahora - (m.fecha_despliegue + m.ms_viaje_ida);
-                        const nuevaLlegada = ahora - (tiempoDesdeLlegada * factor);
-                        updates.fecha_despliegue = nuevaLlegada - updates.ms_viaje_ida;
-                    }
+                    if (elapsedViaje < m.ms_viaje_ida) { updates.fecha_despliegue = ahora - (elapsedViaje * factor); } 
+                    else { const tiempoDesdeLlegada = ahora - (m.fecha_despliegue + m.ms_viaje_ida); updates.fecha_despliegue = (ahora - (tiempoDesdeLlegada * factor)) - updates.ms_viaje_ida; }
                 }
-
-                // B. Reajustar la fase de Ejecución Manual (si aplica)
-                if (m.fecha_inicio_ejecucion) {
-                    const elapsedEjec = ahora - m.fecha_inicio_ejecucion;
-                    updates.fecha_inicio_ejecucion = ahora - (elapsedEjec * factor);
-                }
-
+                if (m.fecha_inicio_ejecucion) { updates.fecha_inicio_ejecucion = ahora - ((ahora - m.fecha_inicio_ejecucion) * factor); }
                 await updateDoc(doc(db, "misiones", m.id), updates);
             }
         }
-
         alert(`⏱️ Relatividad ajustada: ${nuevoValor} min/día. Rutas recalculadas sin saltos bruscos.`);
     };
 
-    const guardarNuevasCoords = async (idPlaneta, latlng) => {
-        await updateDoc(doc(db, "planetas", idPlaneta), { coords: [Math.round(latlng.lat), Math.round(latlng.lng)] });
-        recargarTodo();
-    };
-
+    const guardarNuevasCoords = async (idPlaneta, latlng) => { await updateDoc(doc(db, "planetas", idPlaneta), { coords: [Math.round(latlng.lat), Math.round(latlng.lng)] }); recargarTodo(); };
     const bounds = [[0, 0], [8354, 5090]];
-    const planetaSel = planetas.find(p => String(p.id) === String(planetaSelId));
+    
+    const planetaEnfocado = planetas.find(p => String(p.id) === String(planetaVistoId));
+    const misionEnfocada = misiones.find(m => String(m.id) === String(misionVistaId));
 
     useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => {
-            setMisiones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.estado !== 'Archivada'));
-        });
+        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => { setMisiones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.estado !== 'Archivada')); });
         return () => unsubscribe();
     }, []);
-
-    useEffect(() => {
-        // EL MAPA VUELVE A LA TRANQUILIDAD DE LOS 5 SEGUNDOS
-        const intMapa = setInterval(() => {
-            const tiempoActual = Date.now();
-            setRelojGalacticoMapa(tiempoActual);
-            
-            escuadrones.forEach(async esc => {
-                if (esc.estado_movimiento === 'En Tránsito' && esc.fecha_llegada <= tiempoActual) {
-                    await updateDoc(doc(db, "escuadrones", esc.id), {
-                        estado_movimiento: 'Estacionado', ubicacion_actual_id: esc.ubicacion_destino_id, ubicacion_destino_id: null,
-                        coords_espacio_profundo: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null
-                    });
-                    recargarTodo();
-                }
-            });
-        }, 5000);
-
-        return () => clearInterval(intMapa);
-    }, [escuadrones, recargarTodo]);
 
     const cancelarTodo = () => { setModoConexion(null); setEscuadronSeleccionado(null); setRutaPrevisualizada(null); };
     const iniciarNavegacion = (esc) => { cancelarTodo(); setEscuadronSeleccionado(esc); };
@@ -569,21 +133,13 @@ export default function MapaEstelar() {
     const previsualizarRuta = (destino) => {
         if (!escuadronSeleccionado) return;
         const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(escuadronSeleccionado.nave_id)) : null;
-        
         const plan = calcularPlanDeVuelo(escuadronSeleccionado.ubicacion_actual_id, destino.id, escuadronSeleccionado.coords_espacio_profundo, planetas, nave);
-        if (plan) {
-            setRutaPrevisualizada(plan); // El plan ya devuelve el formato exacto requerido
-        }
+        if (plan) setRutaPrevisualizada(plan); 
     };
 
     const confirmarSalto = async () => {
-        const destino = rutaPrevisualizada.puntos[rutaPrevisualizada.puntos.length - 1];
-        const ahora = Date.now();
-        await updateDoc(doc(db, "escuadrones", escuadronSeleccionado.id), {
-            estado_movimiento: 'En Tránsito', ubicacion_destino_id: destino.id, ubicacion_actual_id: null, coords_espacio_profundo: null,
-            fecha_salida: ahora, fecha_llegada: ahora + (rutaPrevisualizada.tiempoDias * 60 * 1000),
-            ruta_visual: rutaPrevisualizada.puntos.map(p => ({ y: p.coords[0], x: p.coords[1] }))
-        });
+        const destino = rutaPrevisualizada.puntos[rutaPrevisualizada.puntos.length - 1]; const ahora = Date.now();
+        await updateDoc(doc(db, "escuadrones", escuadronSeleccionado.id), { estado_movimiento: 'En Tránsito', ubicacion_destino_id: destino.id, ubicacion_actual_id: null, coords_espacio_profundo: null, fecha_salida: ahora, fecha_llegada: ahora + (rutaPrevisualizada.tiempoDias * (minutosPorDia * 60 * 1000)), ruta_visual: rutaPrevisualizada.puntos.map(p => ({ y: p.coords[0], x: p.coords[1] })) });
         cancelarTodo(); recargarTodo();
     };
 
@@ -595,73 +151,37 @@ export default function MapaEstelar() {
         cancelarTodo(); recargarTodo();
     };
 
-    // --- LÓGICA DE DRAG & DROP ---
     const handleDropEscuadron = async (e, misionDestino) => {
-        e.preventDefault();
-        const escuadronId = e.dataTransfer.getData("escuadron_id");
-        if (!escuadronId) return;
-
-        const escuadron = escuadrones.find(esc => String(esc.id) === String(escuadronId));
-        if (!escuadron) return;
-
-        if (escuadron.lider !== userRole && !esGM) {
-            alert("No tienes autoridad sobre este escuadrón.");
-            return;
-        }
-
-        const yaEstaEnMision = (misionDestino.escuadrones_id || []).includes(escuadronId);
-        if (yaEstaEnMision) return;
-
-        const estaDesplegado = misiones.some(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(escuadronId));
-        if (estaDesplegado || escuadron.estado_movimiento === 'En Tránsito') {
-            alert("El escuadrón está actualmente en operaciones o en tránsito y no puede ser reasignado.");
-            return;
-        }
-
+        e.preventDefault(); const escuadronId = e.dataTransfer.getData("escuadron_id"); if (!escuadronId) return;
+        const escuadron = escuadrones.find(esc => String(esc.id) === String(escuadronId)); if (!escuadron) return;
+        if (escuadron.lider !== userRole && !esGM) { alert("No tienes autoridad."); return; }
+        if ((misionDestino.escuadrones_id || []).includes(escuadronId)) return;
+        if (misiones.some(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(escuadronId)) || escuadron.estado_movimiento === 'En Tránsito') { alert("El escuadrón está ocupado."); return; }
         for (const m of misiones) {
             if (m.id !== misionDestino.id && m.estado !== 'Desplegada' && (m.escuadrones_id || []).includes(escuadronId)) {
-                const nuevosIds = m.escuadrones_id.filter(id => String(id) !== String(escuadronId));
-                await updateDoc(doc(db, "misiones", m.id), { escuadrones_id: nuevosIds });
+                await updateDoc(doc(db, "misiones", m.id), { escuadrones_id: m.escuadrones_id.filter(id => String(id) !== String(escuadronId)) });
             }
         }
-
-        const nuevaListaEscuadrones = [...(misionDestino.escuadrones_id || []), escuadronId];
-        await updateDoc(doc(db, "misiones", misionDestino.id), { escuadrones_id: nuevaListaEscuadrones });
-        
-        setMisionExpandidaId(misionDestino.id);
+        await updateDoc(doc(db, "misiones", misionDestino.id), { escuadrones_id: [...(misionDestino.escuadrones_id || []), escuadronId] });
         recargarTodo();
     };
 
-    const handleDragOver = (e) => {
-        e.preventDefault(); 
-    };
-
-    // --- FUNCIONES TÁCTICAS ---
+    const handleDragOver = (e) => e.preventDefault(); 
     const solicitarDespliegueMision = (mision) => {
         const escAsignados = (mision.escuadrones_id || []).map(id => escuadrones.find(e => String(e.id) === String(id))).filter(Boolean);
-        if(escAsignados.length === 0) {
-            alert("⚠️ No hay fuerzas asignadas. Arrastra escuadrones a la misión para reclutarlos antes de desplegarlos.");
-            return;
-        }
+        if(escAsignados.length === 0) { alert("⚠️ No hay fuerzas asignadas."); return; }
         setConfirmacionDespliegue({ mision, escuadronesDesplegados: escAsignados });
     };
 
     const ejecutarDespliegueMision = async (autoEjecutar) => {
-        const { mision, escuadronesDesplegados } = confirmacionDespliegue;
-        const miEscuadron = escuadronesDesplegados[0];
-        
+        const { mision, escuadronesDesplegados } = confirmacionDespliegue; const miEscuadron = escuadronesDesplegados[0];
         const enPosicion = String(miEscuadron.ubicacion_actual_id) === String(mision.ubicacion_id);
         const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(miEscuadron.nave_id)) : null;
-
         let msViajeIda = 0; let rutaLimpia = null; const ahora = Date.now();
 
         if (!enPosicion) {
             const plan = calcularPlanDeVuelo(miEscuadron.ubicacion_actual_id, mision.ubicacion_id, miEscuadron.coords_espacio_profundo, planetas, nave);
-            if (plan) {
-                // AQUÍ APLICAMOS TU MULTIPLICADOR DE TIEMPO SECRETO
-                msViajeIda = plan.tiempoDias * (minutosPorDia * 60 * 1000);
-                rutaLimpia = plan.puntos.map(p => ({ y: p.y || p.coords[0], x: p.x || p.coords[1] }));
-            }
+            if (plan) { msViajeIda = plan.tiempoDias * (minutosPorDia * 60 * 1000); rutaLimpia = plan.puntos.map(p => ({ y: p.y || p.coords[0], x: p.x || p.coords[1] })); }
         }
 
         const msLlegada = ahora + msViajeIda;
@@ -673,33 +193,22 @@ export default function MapaEstelar() {
             }
             await updateDoc(doc(db, "escuadrones", id), updateData);
         }
-
-        await updateDoc(doc(db, "misiones", mision.id), { 
-            estado: 'Desplegada', fecha_despliegue: ahora, ms_viaje_ida: msViajeIda, 
-            ms_ejecucion: (mision.tiempo_ejecucion || 1) * (minutosPorDia * 60 * 1000), // También escalamos el tiempo de combate
-            auto_ejecutar: autoEjecutar, fecha_inicio_ejecucion: null 
-        });
-        
+        await updateDoc(doc(db, "misiones", mision.id), { estado: 'Desplegada', fecha_despliegue: ahora, ms_viaje_ida: msViajeIda, ms_ejecucion: (mision.tiempo_ejecucion || 1) * (minutosPorDia * 60 * 1000), auto_ejecutar: autoEjecutar, fecha_inicio_ejecucion: null });
         setConfirmacionDespliegue(null); recargarTodo();
     };
 
-    const iniciarEjecucionManual = async (misionId) => {
-        await updateDoc(doc(db, "misiones", misionId), { fecha_inicio_ejecucion: Date.now() });
-        recargarTodo();
-    };
-
+    const iniciarEjecucionManual = async (misionId) => { await updateDoc(doc(db, "misiones", misionId), { fecha_inicio_ejecucion: Date.now() }); recargarTodo(); };
     const solicitarAbortoNavegacion = () => setAlertaAborto({ tipo: 'viaje', escuadron: escuadronSeleccionado });
     const solicitarAbortoMision = (mision) => setAlertaAborto({ tipo: 'mision', mision });
 
     const eliminarMision = async (mision) => {
         if (!esGM) return;
-        if (mision.estado === 'Desplegada') { setAlertaAborto({ tipo: 'mision', mision, eliminarDespues: true }); } 
-        else { setAlertaAborto({ tipo: 'eliminar', mision }); }
+        if (mision.estado === 'Desplegada') setAlertaAborto({ tipo: 'mision', mision, eliminarDespues: true });
+        else setAlertaAborto({ tipo: 'eliminar', mision });
     };
 
     const ejecutarAbortoMapa = async (decision) => {
-        const ahora = Date.now();
-        const escuadronesAProcesar = alertaAborto.tipo === 'viaje' ? [alertaAborto.escuadron.id] : alertaAborto.mision.escuadrones_id;
+        const ahora = Date.now(); const escuadronesAProcesar = alertaAborto.tipo === 'viaje' ? [alertaAborto.escuadron.id] : alertaAborto.mision.escuadrones_id;
 
         for (let id of escuadronesAProcesar) {
             const esc = escuadrones.find(e => String(e.id) === String(id));
@@ -710,13 +219,9 @@ export default function MapaEstelar() {
                 if (posActual) {
                     if (decision === 'refugio') {
                         let nearest = null; let minDist = Infinity;
-                        planetas.forEach(p => {
-                            const d = calcularDistanciaPitagorica(posActual, p.coords);
-                            if (d < minDist) { minDist = d; nearest = p; }
-                        });
+                        planetas.forEach(p => { const d = calcularDistanciaPitagorica(posActual, p.coords); if (d < minDist) { minDist = d; nearest = p; } });
                         if (nearest) {
-                            const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(esc.nave_id)) : null;
-                            let vel = 0.5; if(nave) vel = 1.25 * ((Number(nave.motor_subluz)||3)/5);
+                            const nave = vehiculos ? vehiculos.find(v => String(v.id) === String(esc.nave_id)) : null; let vel = 0.5; if(nave) vel = 1.25 * ((Number(nave.motor_subluz)||3)/5);
                             const llegada = ahora + (Math.round((minDist / vel) * 10) / 10) * 60000;
                             updateData = { ...updateData, estado_movimiento: 'En Tránsito', ubicacion_destino_id: nearest.id, ubicacion_actual_id: null, coords_espacio_profundo: null, fecha_salida: ahora, fecha_llegada: llegada, ruta_visual: [{y: posActual[0], x: posActual[1]}, {y: nearest.coords[0], x: nearest.coords[1]}] };
                         }
@@ -724,202 +229,106 @@ export default function MapaEstelar() {
                         updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: null, coords_espacio_profundo: { y: posActual[0], x: posActual[1] }, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null };
                     }
                 }
-            } else if (decision === 'local') {
-                updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: alertaAborto.mision.ubicacion_id, coords_espacio_profundo: null, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null };
-            }
+            } else if (decision === 'local') { updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: alertaAborto.mision.ubicacion_id, coords_espacio_profundo: null, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null }; }
             await updateDoc(doc(db, "escuadrones", id), updateData);
         }
 
         if (alertaAborto.tipo === 'mision') {
             if (alertaAborto.eliminarDespues) await deleteDoc(doc(db, "misiones", alertaAborto.mision.id));
             else await updateDoc(doc(db, "misiones", alertaAborto.mision.id), { estado: 'Pendiente', escuadrones_id: [], fecha_despliegue: null, ms_viaje_ida: null, ms_ejecucion: null, auto_ejecutar: null, fecha_inicio_ejecucion: null });
-        } else {
-            setEscuadronSeleccionado(null);
-        }
-        
+        } else { setEscuadronSeleccionado(null); }
         setAlertaAborto(null); recargarTodo();
     };
 
     const resolverMision = async (mision, probExitoReal, crFuerzaTotal) => {
-        const asignados = mision.escuadrones_id || [];
-        if (asignados.length === 0) return alert("No hay tropas asignadas.");
+        const asignados = mision.escuadrones_id || []; if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
         const exito = (Math.random() * 100) <= probExitoReal; 
         const resultadoTexto = exito ? `Contrato cumplido con éxito. Extracción limpia asegurada.` : `Objetivo fallido. Fuerte resistencia enemiga. Las fuerzas se retiraron bajo fuego.`;
-        
-        const pLevel = mision.peligrosidad || 'Media';
-        const dangerStats = DANGER_TABLE[pLevel];
-
-        const valoresRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 };
-        const valorRango = valoresRango[mision.rango] || 3; 
+        const dangerStats = DANGER_TABLE[mision.peligrosidad || 'Media'];
+        const valorRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 }[mision.rango] || 3; 
         let puntosPrestigioDelta = exito ? (2 + Math.round((100 - probExitoReal) / 10) + valorRango) : (-1 - Math.round(probExitoReal / 10) - (8 - valorRango));
-
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
-        
-        // --- LÓGICA DE PAGO ECONÓMICO ---
         const creditosEnJuego = Number(mision.recompensa) || 0;
         const recompensaObtenida = exito ? `${creditosEnJuego} Créditos` : "Ninguna";
-
-        let multDif = 1;
-        const crTarget = Math.round(crFuerzaTotal);
-        if (mision.cr_req < crTarget - 0.5) multDif = 0.5;
-        else if (mision.cr_req > crTarget + 0.5) multDif = 1.5;
-        
+        let multDif = 1; const crTarget = Math.round(crFuerzaTotal);
+        if (mision.cr_req < crTarget - 0.5) multDif = 0.5; else if (mision.cr_req > crTarget + 0.5) multDif = 1.5;
         const multRango = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.5, 'S': 2.0, 'SS': 5.0 }[mision.rango] || 1;
         const xpEscuadronGanada = exito ? Math.round((1 * multDif * multRango) * 10) / 10 : 0;
-        
         const poderRatio = Math.max(0.5, crFuerzaTotal / (mision.cr_req || 1));
-
-        let reporteBajasGlobal = [];
-        let nombresEscuadrones = [];
+        let reporteBajasGlobal = []; let nombresEscuadrones = [];
 
         for (let escId of asignados) {
-            const esc = escuadrones.find(e => String(e.id) === String(escId));
-            if (!esc) continue;
+            const esc = escuadrones.find(e => String(e.id) === String(escId)); if (!esc) continue;
             nombresEscuadrones.push(esc.nombre);
             const miembros = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
-            const idsUnicos = [...new Set(miembros)];
-            let bajasEscuadron = [];
+            const idsUnicos = [...new Set(miembros)]; let bajasEscuadron = [];
 
             for (let sId of idsUnicos) {
-                const soldado = soldados.find(s => String(s.id) === String(sId));
-                if (!soldado) continue;
-                
-                let estadoSalud = soldado.estado_salud || 'Sano';
-                let burlos = Number(soldado.veces_salvado || 0);
-                let newXp = Number(soldado.xp || 0) + xpBaseGained;
-                let newLevel = Number(soldado.nivel || 1);
-                let txtLogParts = [];
-
-                const rangoLetra = mision.rango || 'C';
+                const soldado = soldados.find(s => String(s.id) === String(sId)); if (!soldado) continue;
+                let estadoSalud = soldado.estado_salud || 'Sano'; let burlos = Number(soldado.veces_salvado || 0); let newXp = Number(soldado.xp || 0) + xpBaseGained; let newLevel = Number(soldado.nivel || 1); let txtLogParts = [];
                 let medallas = soldado.medallas ? { ...soldado.medallas } : { 'E': 0, 'D': 0, 'C': 0, 'B': 0, 'A': 0, 'S': 0, 'SS': 0 };
-                if (exito) medallas[rangoLetra] = (Number(medallas[rangoLetra]) || 0) + 1;
-
+                if (exito) medallas[mision.rango || 'C'] = (Number(medallas[mision.rango || 'C']) || 0) + 1;
                 while (newLevel < 20 && newXp >= TABLA_XP_DND[newLevel + 1]) newLevel++;
-
                 let prevencionHeridas = 0;
-                if (soldado.equipo) {
-                    Object.values(soldado.equipo).forEach(itemId => {
-                        if(itemId) {
-                            const item = equipo.find(e => String(e.id) === String(itemId));
-                            if (item && item.reduccion_dmg) prevencionHeridas += Number(item.reduccion_dmg);
-                        }
-                    });
-                }
+                if (soldado.equipo) { Object.values(soldado.equipo).forEach(itemId => { if(itemId) { const item = equipo.find(e => String(e.id) === String(itemId)); if (item && item.reduccion_dmg) prevencionHeridas += Number(item.reduccion_dmg); } }); }
                 
                 if (estadoSalud !== 'Muerto') {
-                    let baseHitChance = exito ? dangerStats.win.hit_chance : dangerStats.fail.hit_chance;
-                    baseHitChance = baseHitChance / poderRatio;
-                    
-                    const multiplicadorDefensa = Math.max(0.1, (100 - prevencionHeridas) / 100); 
-                    const probHeridaReal = baseHitChance * multiplicadorDefensa;
-
+                    let probHeridaReal = (exito ? dangerStats.win.hit_chance : dangerStats.fail.hit_chance) / poderRatio * Math.max(0.1, (100 - prevencionHeridas) / 100);
                     if ((Math.random() * 100) < probHeridaReal) {
-                        estadoSalud = 'Leve';
-                        let gradoDanio = "leves";
-                        
+                        estadoSalud = 'Leve'; let gradoDanio = "leves";
                         if (!exito) {
                             const casc = dangerStats.fail.cascada;
-                            if (Math.random() < casc[0]) { 
-                                estadoSalud = 'Media'; gradoDanio = "moderadas"; 
-                                if (Math.random() < casc[1]) {
-                                    estadoSalud = 'Grave'; gradoDanio = "graves";
-                                    if (Math.random() < casc[2]) {
-                                        estadoSalud = 'Gravísima'; gradoDanio = "críticas";
-                                        if (Math.random() < casc[3]) {
-                                            if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
-                                            else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; } } 
-                                            else { estadoSalud = 'Muerto'; }
-                                        }
-                                    }
-                                }
-                            }
+                            if (Math.random() < casc[0]) { estadoSalud = 'Media'; gradoDanio = "moderadas"; if (Math.random() < casc[1]) { estadoSalud = 'Grave'; gradoDanio = "graves"; if (Math.random() < casc[2]) { estadoSalud = 'Gravísima'; gradoDanio = "críticas"; if (Math.random() < casc[3]) { if (burlos === 0) { burlos = 1; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } else if (burlos === 1) { if (Math.random() < 0.8) { burlos = 2; estadoSalud = 'Gravísima'; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } else { estadoSalud = 'Muerto'; } } else { estadoSalud = 'Muerto'; } } } } }
                         }
-
-                        if (estadoSalud === 'Muerto') { txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } 
-                        else if (txtLogParts.length === 0) { txtLogParts.push(`🩸 ${soldado.nombre} con heridas ${gradoDanio}.`); }
+                        if (estadoSalud === 'Muerto') { txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); } else if (txtLogParts.length === 0) { txtLogParts.push(`🩸 ${soldado.nombre} con heridas ${gradoDanio}.`); }
                     }
                 }
-
-                if (txtLogParts.length > 0) {
-                    const msg = txtLogParts.join(' ');
-                    bajasEscuadron.push(msg); reporteBajasGlobal.push(msg);
-                }
-                
-                await updateDoc(doc(db, "soldados", sId), { 
-                    estado_salud: estadoSalud, veces_salvado: burlos, xp: newXp, nivel: newLevel,
-                    operaciones: (Number(soldado.operaciones || 0) + 1), exitos: (Number(soldado.exitos || 0) + (exito ? 1 : 0)), medallas,
-                    puntos_prestigio: Number(soldado.puntos_prestigio || 0) + puntosPrestigioDelta
-                });
+                if (txtLogParts.length > 0) { const msg = txtLogParts.join(' '); bajasEscuadron.push(msg); reporteBajasGlobal.push(msg); }
+                await updateDoc(doc(db, "soldados", sId), { estado_salud: estadoSalud, veces_salvado: burlos, xp: newXp, nivel: newLevel, operaciones: (Number(soldado.operaciones || 0) + 1), exitos: (Number(soldado.exitos || 0) + (exito ? 1 : 0)), medallas, puntos_prestigio: Number(soldado.puntos_prestigio || 0) + puntosPrestigioDelta });
             }
-
-            let moralActual = Number(esc.moral);
-            if (isNaN(moralActual)) moralActual = 50;
-            
-            await updateDoc(doc(db, "escuadrones", esc.id), {
-                estado: 'En Base', bitacora: arrayUnion({ fecha: new Date().toLocaleDateString(), titulo: mision.titulo, descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron }),
-                mtotales: (Number(esc.mtotales) || 0) + 1, mexito: (Number(esc.mexito) || 0) + (exito ? 1 : 0),
-                moral: exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15), xp_escuadron: (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada
-            });
+            let moralActual = Number(esc.moral); if (isNaN(moralActual)) moralActual = 50;
+            await updateDoc(doc(db, "escuadrones", esc.id), { estado: 'En Base', bitacora: arrayUnion({ fecha: new Date().toLocaleDateString(), titulo: mision.titulo, descripcion: resultadoTexto, exito, recompensas: recompensaObtenida, xp: `+${xpBaseGained} XP`, bajas: bajasEscuadron }), mtotales: (Number(esc.mtotales) || 0) + 1, mexito: (Number(esc.mexito) || 0) + (exito ? 1 : 0), moral: exito ? Math.min(100, moralActual + 10) : Math.max(0, moralActual - 15), xp_escuadron: (Number(esc.xp_escuadron) || 0) + xpEscuadronGanada });
         }
 
-        // --- REALIZAR LA TRANSFERENCIA BANCARIA ---
         if (exito && creditosEnJuego > 0) {
-            // Buscamos al dueño del primer escuadrón asignado para pagarle
+            const escLider = escuadrones.find(e => String(e.id) === String(asignados[0]));
+            if (escLider && escLider.faccion) { try { await updateDoc(doc(db, "comandantes", escLider.faccion), { creditos: increment(creditosEnJuego) }); } catch (err) { console.error(err); } }
+        }
+
+        if (exito && mision.recompensa_items && mision.recompensa_items.length > 0) {
             const escLider = escuadrones.find(e => String(e.id) === String(asignados[0]));
             if (escLider && escLider.faccion) {
-                try {
-                    await updateDoc(doc(db, "comandantes", escLider.faccion), {
-                        creditos: increment(creditosEnJuego)
-                    });
-                } catch (err) {
-                    console.error("Error al transferir fondos al banco:", err);
+                for (let itemStr of mision.recompensa_items) {
+                    try {
+                        const partes = itemStr.split('_'); const tipoItem = partes[0]; const itemId = partes.slice(1).join('_'); 
+                        let coleccion = ""; let updateFields = { propietario: escLider.faccion };
+                        if (tipoItem === 'E') coleccion = "equipo"; else if (tipoItem === 'V') coleccion = "vehiculos"; else if (tipoItem === 'S') { coleccion = "soldados"; updateFields = { lider: escLider.faccion }; }
+                        if (coleccion && itemId) await updateDoc(doc(db, coleccion, itemId), updateFields);
+                    } catch (err) { console.error(err); }
                 }
             }
         }
-
-        // (Esto ya lo tenías, déjalo igual)
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
-
-        await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
-        
-        setReporteAAR({
-            titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "), exito, descripcion: resultadoTexto, 
-            xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida,
-            xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), 
-            bajas: reporteBajasGlobal
-        });
+        setReporteAAR({ titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "), exito, descripcion: resultadoTexto, xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida, xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), bajas: reporteBajasGlobal });
         await recargarTodo();
     };
 
-    // ORDENAMIENTO ESCUADRONES (Míos primero, luego alfabético)
     const escuadronesOrdenados = [...escuadrones].sort((a, b) => {
-        if (!esGM) {
-            const esMiaA = a.faccion === userRole ? 1 : 0;
-            const esMiaB = b.faccion === userRole ? 1 : 0;
-            if (esMiaA !== esMiaB) return esMiaB - esMiaA; 
-        }
-        const cmdteA = soldados.find(s => s.id === a.lider_id)?.nombre || "Z-Comando Central";
-        const cmdteB = soldados.find(s => s.id === b.lider_id)?.nombre || "Z-Comando Central";
-        const diffCmdte = cmdteA.localeCompare(cmdteB);
-        if (diffCmdte !== 0) return diffCmdte;
-        return a.nombre.localeCompare(b.nombre);
+        if (!esGM) { const esMiaA = a.faccion === userRole ? 1 : 0; const esMiaB = b.faccion === userRole ? 1 : 0; if (esMiaA !== esMiaB) return esMiaB - esMiaA; }
+        const cmdteA = soldados.find(s => s.id === a.lider_id)?.nombre || "Z"; const cmdteB = soldados.find(s => s.id === b.lider_id)?.nombre || "Z";
+        const diffCmdte = cmdteA.localeCompare(cmdteB); if (diffCmdte !== 0) return diffCmdte; return a.nombre.localeCompare(b.nombre);
     });
 
     const misionesFiltradas = misiones.filter(m => {
         if (filtrosMision.rango && m.rango !== filtrosMision.rango) return false;
         if (filtrosMision.peligrosidad && m.peligrosidad !== filtrosMision.peligrosidad) return false;
-        if (filtrosMision.especial && !m.recompensa_especial) return false;
-        if (filtrosMision.minRecompensa) {
-            const valorMinimo = parseInt(filtrosMision.minRecompensa) || 0;
-            const valorMision = parseInt((m.recompensa || "0").replace(/\D/g, '')) || 0;
-            if (valorMision < valorMinimo) return false;
-        }
+        if (filtrosMision.especial && !m.recompens_items) return false;
+        if (filtrosMision.minRecompensa) { const valorMinimo = parseInt(filtrosMision.minRecompensa) || 0; const valorMision = parseInt((m.recompensa || "0").replace(/\D/g, '')) || 0; if (valorMision < valorMinimo) return false; }
         return true;
     });
 
-    // OPTIMIZACIÓN DEL MAPA: Evita que Leaflet colapse al hacer zoom rápido
     const rutasEstaticas = useMemo(() => {
         return planetas.flatMap(p => (p.conexiones || []).map(tId => {
             const t = planetas.find(x => String(x.id) === String(tId));
@@ -930,28 +339,9 @@ export default function MapaEstelar() {
     const marcadoresEscuadrones = useMemo(() => {
         return (
             <>
-                {escuadrones.filter(e => e.estado_movimiento === 'En Tránsito').map(esc => {
-                    const pos = calcularPosicionEnRuta(esc, relojGalacticoMapa);
-                    if (!pos) return null;
-                    const coordsRuta = esc.ruta_visual ? esc.ruta_visual.map(p => [p.y, p.x]) : [];
-                    const colorEstela = "#de0000"; 
-                    return (
-                        <div key={`viaje-${esc.id}`}>
-                            {coordsRuta.length > 0 && <Polyline positions={coordsRuta} color={colorEstela} weight={3} dashArray="5, 10" className="ruta-animada" opacity={0.9} />}
-                            <CircleMarker center={pos} radius={6} pathOptions={{ color: '#fff', fillColor: colorEstela, fillOpacity: 1, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
-                                <Tooltip direction="bottom" offset={[0, 5]}>
-                                    <div style={{ textAlign: 'center' }}>
-                                        <strong>{esc.nombre}</strong><br/>
-                                        <span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                            ETA: {Math.max(0, ((esc.fecha_llegada - relojGalacticoMapa) / 60000)).toFixed(1)} mins
-                                        </span>
-                                    </div>
-                                </Tooltip>
-                            </CircleMarker>
-                        </div>
-                    );
-                })}
-
+                {escuadrones.filter(e => e.estado_movimiento === 'En Tránsito').map(esc => (
+                    <EscuadronEnTransito key={`viaje-${esc.id}`} esc={esc} recargarTodo={recargarTodo} esGM={esGM} userRole={userRole} iniciarNavegacion={iniciarNavegacion} />
+                ))}
                 {escuadrones.filter(e => e.estado_movimiento === 'Estacionado' && !e.ubicacion_actual_id && e.coords_espacio_profundo).map(esc => (
                     <CircleMarker key={`deep-${esc.id}`} center={[esc.coords_espacio_profundo.y, esc.coords_espacio_profundo.x]} radius={5} pathOptions={{ color: '#F44336', fillColor: '#F44336', fillOpacity: 0.8, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
                         <Tooltip direction="top" offset={[0, -5]}><div style={{ textAlign: 'center' }}><strong style={{ color: '#F44336' }}>{esc.nombre}</strong><br/><span style={{ fontSize: '0.7rem', color: '#aaa' }}>🚨 Varado en espacio profundo</span></div></Tooltip>
@@ -959,250 +349,206 @@ export default function MapaEstelar() {
                 ))}
             </>
         );
-    }, [escuadrones, relojGalacticoMapa, esGM, userRole]);
+    }, [escuadrones, esGM, userRole]);
 
+    // ============================================================================
+    // RENDERIZADO PRINCIPAL
+    // ============================================================================
     return (
-        <div style={{ display: 'flex', height: '85vh', backgroundColor: '#0a0a0f', color: '#fff', fontFamily: 'monospace' }}>
+        <div style={{ position: 'relative', height: '85vh', width: '100%', backgroundColor: '#0a0a0f', color: '#fff', fontFamily: 'monospace', overflow: 'hidden' }}>
             
-            {/* 1. SECTOR IZQUIERDO: EL MAPA */}
-            <div style={{ flex: 3, position: 'relative', borderRight: '2px solid #1a1a2e' }}>
-                <MapContainer crs={L.CRS.Simple} bounds={bounds} maxBounds={bounds} maxBoundsViscosity={1.0} style={{ height: '100%', width: '100%', backgroundColor: '#000' }} center={[6000, 2500]} zoom={-1} minZoom={-2} maxZoom={2}>
-                    <ImageOverlay url="/mapa-galaxia.jpg" bounds={bounds} />
-                    <HerramientaCoordenadas onMapClick={(c) => { if(esGM) { setCoordsClic(c); setPlanetaAEditar(null); setModalOpen(true); } }} modoConexion={!!modoConexion} modoNavegacion={!!escuadronSeleccionado} cancelarModos={cancelarTodo} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} />
-                    <AutoCentrarMapa planetaSel={planetaSel} origenSeleccion={origenSeleccion} vuelaACoords={vueloDirecto} />
+            {/* ESTILOS PARA LA ANIMACIÓN DE LA RETÍCULA SCI-FI */}
+            <style>{`
+                .leaflet-div-icon-transparent { background: transparent; border: none; }
+                .reticle-base { position: absolute; top: -20px; left: -20px; width: 40px; height: 40px; border: 2px dashed #00BCD4; border-radius: 50%; animation: reticle-spin 4s linear infinite; pointer-events: none; }
+                .reticle-pulse { position: absolute; top: -20px; left: -20px; width: 40px; height: 40px; border: 2px solid #00BCD4; border-radius: 50%; animation: reticle-pulse 1.5s ease-out infinite; pointer-events: none; }
+                @keyframes reticle-pulse { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
+                @keyframes reticle-spin { 100% { transform: rotate(360deg); } }
+            `}</style>
 
-                    {/* USAMOS LOS BLOQUES OPTIMIZADOS AQUÍ */}
+            {/* EL MAPA (100% Pantalla) */}
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+                <MapContainer crs={L.CRS.Simple} bounds={bounds} maxBounds={bounds} maxBoundsViscosity={1.0} style={{ height: '100%', width: '100%', backgroundColor: '#000' }} center={[6000, 2500]} zoom={-1} minZoom={-2} maxZoom={2} zoomControl={false}>
+                    <ImageOverlay url="/mapa-galaxia.jpg" bounds={bounds} />
+                    <HerramientaMapaEventos onMapClick={(c) => { if(esGM) { setCoordsClic(c); setPlanetaAEditar(null); setModalOpen(true); } }} modoConexion={!!modoConexion} modoNavegacion={!!escuadronSeleccionado} cerrarHUD={cerrarHUD} />
+                    <AutoCentrarMapa vuelaACoords={vueloDirecto} />
+
                     {rutasEstaticas}
                     {rutaPrevisualizada && <Polyline positions={rutaPrevisualizada.puntos.map(p => p.coords)} color="#000000" weight={4} dashArray="5, 10" />}
-                    <CapaDinamicaPlanetas planetas={planetas} escuadrones={escuadrones} misiones={misiones} planetaSelId={planetaSelId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} modoConexion={modoConexion} ejecutarConexion={ejecutarConexion} escuadronSeleccionado={escuadronSeleccionado} previsualizarRuta={previsualizarRuta} modoMoverPines={modoMoverPines} guardarNuevasCoords={guardarNuevasCoords} />
+                    <CapaDinamicaPlanetas planetas={planetas} escuadrones={escuadrones} misiones={misiones} planetaVistoId={planetaVistoId} abrirPlaneta={abrirPlaneta} modoConexion={modoConexion} ejecutarConexion={ejecutarConexion} escuadronSeleccionado={escuadronSeleccionado} previsualizarRuta={previsualizarRuta} modoMoverPines={modoMoverPines} guardarNuevasCoords={guardarNuevasCoords} />
                     {marcadoresEscuadrones}
-                    
                 </MapContainer> 
+            </div>
 
-                {/* BOTÓN SECRETO DEL GM PARA EL TIEMPO */}
-                {esGM && (
-                    <div style={{ backgroundColor: '#0a0a0f', padding: '10px', display: 'flex', justifyContent: 'flex-end', borderRight: '2px solid #1a1a2e' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#1a1a24', padding: '5px 15px', borderRadius: '4px', border: '1px solid #3f3f5a' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#aaa' }}>⏱️ 1 Día de viaje =</span>
-                            <input 
-                                type="number" 
-                                min="0.1" 
-                                step="0.1" 
-                                value={inputMinutos} 
-                                onChange={(e) => setInputMinutos(e.target.value)}
-                                style={{ width: '60px', backgroundColor: '#000', color: '#00BCD4', border: '1px solid #00BCD4', borderRadius: '3px', padding: '2px 5px', textAlign: 'center', fontWeight: 'bold' }}
-                            />
-                            <span style={{ fontSize: '0.8rem', color: '#aaa' }}>minutos reales (1 día = 1440 min)</span>
-                            <button 
-                                onClick={aplicarNuevoTiempo}
-                                style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '4px 10px', borderRadius: '3px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
-                            >
-                                Actualizar Rutas
-                            </button>
-                        </div>
-                    </div>
-                )}
+            {/* PANEL PRINCIPAL: DRILL-DOWN HUD (Caja Flotante Izquierda) */}
+            <div style={{ position: 'absolute', top: '15px', left: '15px', width: '360px', zIndex: 1000, pointerEvents: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                
+            {/* BOTONES DE NAVEGACIÓN COMPACTOS */}
+                <div style={{ display: 'flex', gap: '5px', pointerEvents: 'auto' }}>
+                    <button onClick={() => toggleMenu('planetas')} style={{ flex: 1, backgroundColor: menuPrincipal === 'planetas' ? 'rgba(0, 188, 212, 0.9)' : 'rgba(15, 15, 26, 0.85)', color: menuPrincipal === 'planetas' ? '#111' : '#00BCD4', border: '1px solid rgba(0, 188, 212, 0.3)', padding: '6px 0', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px', backdropFilter: 'blur(5px)' }}>🪐 ASTROS</button>
+                    <button onClick={() => toggleMenu('misiones')} style={{ flex: 1, backgroundColor: menuPrincipal === 'misiones' ? 'rgba(244, 67, 54, 0.9)' : 'rgba(15, 15, 26, 0.85)', color: menuPrincipal === 'misiones' ? '#111' : '#F44336', border: '1px solid rgba(244, 67, 54, 0.3)', padding: '6px 0', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px', backdropFilter: 'blur(5px)' }}>📜 CONTRATOS</button>
+                    <button onClick={() => toggleMenu('escuadrones')} style={{ flex: 1, backgroundColor: menuPrincipal === 'escuadrones' ? 'rgba(76, 175, 80, 0.9)' : 'rgba(15, 15, 26, 0.85)', color: menuPrincipal === 'escuadrones' ? '#111' : '#4CAF50', border: '1px solid rgba(76, 175, 80, 0.3)', padding: '6px 0', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px', backdropFilter: 'blur(5px)' }}>🛡️ FUERZAS</button>
+                </div>
 
-                {/* HUD Flotante de Movimiento */}
-                {escuadronSeleccionado && (
-                    <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 1000, backgroundColor: escuadronSeleccionado.estado_movimiento === 'En Tránsito' ? '#FF9800' : '#4CAF50', padding: '10px 20px', borderRadius: '4px', display: 'flex', gap: '15px', alignItems: 'center' }}>
-                        {escuadronSeleccionado.estado_movimiento !== 'En Tránsito' ? (
-                            <><span>🛰️ NAVEGANDO: {escuadronSeleccionado.nombre}</span>{rutaPrevisualizada && <button onClick={confirmarSalto} style={{ backgroundColor: '#fff', color: '#4CAF50', border: 'none', padding: '5px 10px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>🚀 INICIAR SALTO ({rutaPrevisualizada.tiempoDias}d)</button>}</>
-                        ) : (
-                            <><span>💫 VIAJANDO: {escuadronSeleccionado.nombre}</span><span style={{ backgroundColor: '#111', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem' }}>ETA: {Math.max(0, ((escuadronSeleccionado.fecha_llegada - Date.now()) / 60000)).toFixed(1)} mins</span><button onClick={solicitarAbortoNavegacion} style={{ backgroundColor: '#F44336', color: '#fff', border: '1px solid #fff', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🚨 Abortar Viaje</button></>
-                        )}
-                        <button onClick={cancelarTodo} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>✖</button>
-                    </div>
+                {/* CONTENEDOR DE INFORMACIÓN DINÁMICA */}
+                {(menuPrincipal || planetaVistoId || misionVistaId) && (
+                    <PanelHolografico style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        {/* --- NIVEL 3: DETALLE DE MISIÓN --- */}
+                        {misionVistaId ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '75vh' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px 12px', borderBottom: '1px solid rgba(244, 67, 54, 0.4)', alignItems: 'center' }}>
+                                    <button onClick={volverAPlaneta} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>⬅ 🪐 {planetaEnfocado?.nombre || 'Volver'}</button>
+                                    <button onClick={cerrarHUD} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer' }}>✖</button>
+                                </div>
+                                <div className="scroll-interno" style={{ overflowY: 'auto', padding: '10px' }}>
+                                    {misionEnfocada && (
+                                        <TarjetaMisionGlobal 
+                                            m={misionEnfocada} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole}
+                                            misionExpandida={misionVistaId} setMisionExpandida={(id) => id ? null : volverAPlaneta()} 
+                                            setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        ) : 
+
+                        /* --- NIVEL 2: DETALLE DE PLANETA --- */
+                        planetaVistoId ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '75vh' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.5)', padding: '10px 15px', borderBottom: '1px solid rgba(0, 188, 212, 0.4)', alignItems: 'center' }}>
+                                    <div>
+                                        <h3 style={{ margin: 0, color: '#00BCD4', fontSize: '1.1rem', textShadow: '0 0 5px rgba(0,188,212,0.5)' }}>{planetaEnfocado?.nombre}</h3>
+                                        <span style={{ fontSize: '0.7rem', color: '#aaa' }}>{planetaEnfocado?.region}</span>
+                                    </div>
+                                    <button onClick={cerrarHUD} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1.2rem' }}>✖</button>
+                                </div>
+
+                                {/* BOTONES GM RESTAURADOS */}
+                                {esGM && (
+                                    <div style={{ display: 'flex', gap: '5px', padding: '10px 15px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, backgroundColor: 'rgba(0,0,0,0.2)' }}>
+                                        <button onClick={() => setModoMoverPines(!modoMoverPines)} style={{ flex: 1, backgroundColor: modoMoverPines ? '#4CAF50' : 'rgba(255, 152, 0, 0.2)', color: modoMoverPines ? '#111' : '#FF9800', border: '1px solid #FF9800', padding: '4px', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 'bold' }}>{modoMoverPines ? '✅ GUARDAR' : '📍 MOVER'}</button>
+                                        <button onClick={() => { setPlanetaAEditar(planetaEnfocado); setModalOpen(true); }} style={{ flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: '1px solid #555', padding: '4px', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 'bold' }}>⚙️ EDITAR</button>
+                                        <button onClick={() => setModoConexion(planetaEnfocado)} style={{ flex: 1, backgroundColor: 'rgba(0, 188, 212, 0.2)', color: '#00BCD4', border: '1px solid #00BCD4', padding: '4px', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 'bold' }}>🔗 RELÉS</button>
+                                    </div>
+                                )}
+
+                                <div className="scroll-interno" style={{ overflowY: 'auto', padding: '15px' }}>
+                                    {planetaEnfocado?.descripcion && <div style={{ fontSize: '0.8rem', color: '#aaa', fontStyle: 'italic', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px dashed #333' }}>{planetaEnfocado.descripcion}</div>}
+                                    
+                                    <h4 style={{ color: '#FFC107', margin: '0 0 8px 0', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,193,7,0.3)' }}>📜 CONTRATOS LOCALES</h4>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '20px' }}>
+                                        {misiones.filter(m => String(m.ubicacion_id) === String(planetaVistoId)).length === 0 ? <span style={{fontSize: '0.75rem', color: '#666'}}>Sin operaciones.</span> : 
+                                        misiones.filter(m => String(m.ubicacion_id) === String(planetaVistoId)).map(m => (
+                                            <div key={m.id} onClick={() => abrirMision(m)} style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: '2px solid #FFC107' }}>
+                                                <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{m.titulo}</div>
+                                                <div style={{ fontSize: '0.7rem', color: '#aaa' }}>Rango {m.rango} | {m.peligrosidad}</div>
+                                            </div>
+                                        ))}
+                                        {esGM && <button onClick={() => { setMisionParaEditar({ ubicacion_id: planetaVistoId }); setIsModalMisionOpen(true); }} style={{ background: 'none', color: '#F44336', border: '1px dashed #F44336', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', marginTop: '4px' }}>+ Nuevo Contrato</button>}
+                                    </div>
+
+                                    <h4 style={{ color: '#4CAF50', margin: '0 0 8px 0', fontSize: '0.8rem', borderBottom: '1px solid rgba(76,175,80,0.3)' }}>🛰️ HANGAR LOCAL</h4>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                        {escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planetaVistoId)).map(esc => {
+                                            // Verificamos si está en operación
+                                            const misionActual = misiones.find(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(esc.id));
+                                            const enOperacion = !!misionActual;
+                                            const puedeMover = !enOperacion && (esGM || esc.faccion === userRole);
+                                            
+                                            return (
+                                                <div key={esc.id} style={{ display: 'flex', flexDirection: 'column', backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', borderLeft: `2px solid ${enOperacion ? '#F44336' : '#4CAF50'}` }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 'bold' }}>{esc.nombre}</span>
+                                                        {puedeMover && <button onClick={() => iniciarNavegacion(esc)} style={{ backgroundColor: '#4CAF50', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem' }}>NAVEGAR</button>}
+                                                    </div>
+                                                    {enOperacion && <div style={{ fontSize: '0.7rem', color: '#F44336', marginTop: '4px', fontWeight: 'bold' }}>BLOQUEADO: EN OPERACIÓN</div>}
+                                                </div>
+                                            );
+                                        })}
+                                        {escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planetaVistoId)).length === 0 && <span style={{fontSize: '0.75rem', color: '#666'}}>Vacío.</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : 
+
+                        /* --- NIVEL 1: LISTAS GLOBALES COMPACTAS --- */
+                        menuPrincipal ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '40vh' }}>
+                                {menuPrincipal === 'planetas' && <div style={{ padding: '8px' }}><input type="text" placeholder="🔍 Buscar sistema..." value={filtroPlanetas} onChange={(e) => setFiltroPlanetas(e.target.value)} style={{ width: '100%', padding: '6px', background: 'rgba(0,0,0,0.5)', color: '#00BCD4', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '4px', outline: 'none', fontSize: '0.8rem' }} /></div>}
+                                
+                                <div className="scroll-interno" style={{ overflowY: 'auto', padding: '0 8px 8px 8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {menuPrincipal === 'planetas' && [...planetas].filter(p => p.nombre.toLowerCase().includes(filtroPlanetas.toLowerCase())).sort((a,b) => a.nombre.localeCompare(b.nombre)).map(p => (
+                                        <div key={p.id} onClick={() => abrirPlaneta(p.id)} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: `2px solid ${p.tieneRele ? '#9C27B0' : '#00BCD4'}` }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#fff' }}>{p.nombre}</div>
+                                        </div>
+                                    ))}
+
+                                    {menuPrincipal === 'misiones' && misionesFiltradas.map(m => (
+                                        <div key={m.id} onClick={() => abrirMision(m)} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: '2px solid #F44336' }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#fff' }}>{m.titulo}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#aaa' }}>Planeta: {planetas.find(p => p.id === m.ubicacion_id)?.nombre || 'Desconocido'}</div>
+                                        </div>
+                                    ))}
+
+                                    {menuPrincipal === 'escuadrones' && escuadronesOrdenados.map(esc => {
+                                        const enViaje = esc.estado_movimiento === 'En Tránsito';
+                                        const misionActual = misiones.find(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(esc.id));
+                                        const enOperacion = !!misionActual;
+
+                                        return (
+                                            <div key={esc.id} onClick={() => {
+                                                if (enViaje) { const pos = calcularPosicionEnRuta(esc, Date.now()); if (pos) setVueloDirecto(pos); cerrarHUD(); }
+                                                else if (esc.ubicacion_actual_id) { abrirPlaneta(esc.ubicacion_actual_id); }
+                                            }} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: `2px solid ${enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50')}` }}>
+                                                <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#fff' }}>🛡️ {esc.nombre}</div>
+                                                <div style={{ fontSize: '0.7rem', color: enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50') }}>
+                                                    {enViaje ? '🚀 En Tránsito' : enOperacion ? `⚔️ En Op: ${misionActual.titulo}` : '🛰️ Estacionado'}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        ) : null}
+                    </PanelHolografico>
                 )}
             </div>
 
-            {/* 2. SECTOR DERECHO: PANEL LATERAL FIJO */}
-                <div style={{ flex: '0 0 420px', width: '420px', minWidth: '420px', maxWidth: '420px', overflowX: 'hidden', padding: '15px', backgroundColor: '#0f0f1a', borderLeft: '1px solid #3f3f5a', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>                     
-                {!planetaSel ? (
-                    // ESTADO GLOBAL: OUTLINER CON PESTAÑAS
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', animation: 'fadeIn 0.3s ease' }}>
-                        
-                        {/* Selector de Pestañas (FIX: Tamaños porcentuales matemáticos para evitar jitter) */}
-                        <div style={{ display: 'flex', borderBottom: '2px solid #3f3f5a', marginBottom: '15px', flexShrink: 0 }}>
-                            <button onClick={() => setPestanaGlobal('planetas')} style={{ width: '33.33%', flexShrink: 0, background: pestanaGlobal === 'planetas' ? '#00BCD4' : 'transparent', color: pestanaGlobal === 'planetas' ? '#111' : '#888', border: 'none', padding: '10px 5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>🪐 ASTROS</button>
-                            <button onClick={() => setPestanaGlobal('misiones')} style={{ width: '33.34%', flexShrink: 0, background: pestanaGlobal === 'misiones' ? '#F44336' : 'transparent', color: pestanaGlobal === 'misiones' ? '#111' : '#888', border: 'none', padding: '10px 5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>📜 CONTRATOS</button>
-                            <button onClick={() => setPestanaGlobal('escuadrones')} style={{ width: '33.33%', flexShrink: 0, background: pestanaGlobal === 'escuadrones' ? '#4CAF50' : 'transparent', color: pestanaGlobal === 'escuadrones' ? '#111' : '#888', border: 'none', padding: '10px 5px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>🛡️ FUERZAS</button>
-                        </div>
+            {/* MÁQUINA DEL TIEMPO COMPACTA (Esquina Inferior Izquierda) */}
+            {esGM && (
+                <div style={{ position: 'absolute', bottom: '20px', left: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+                    {mostrarTiempo && (
+                        <PanelHolografico style={{ padding: '10px', display: 'flex', alignItems: 'center', gap: '10px', animation: 'fadeInUp 0.2s ease' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#00BCD4', fontWeight: 'bold' }}>1 Día =</span>
+                            <input type="number" min="0.1" step="0.1" value={inputMinutos} onChange={(e) => setInputMinutos(e.target.value)} style={{ width: '40px', backgroundColor: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid #00BCD4', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', padding: '2px' }} />
+                            <span style={{ fontSize: '0.7rem', color: '#aaa' }}>min</span>
+                            <button onClick={aplicarNuevoTiempo} style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer' }}>SYNC</button>
+                        </PanelHolografico>
+                    )}
+                    <button onClick={() => setMostrarTiempo(!mostrarTiempo)} style={{ backgroundColor: 'rgba(15, 15, 26, 0.85)', backdropFilter: 'blur(12px)', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', border: mostrarTiempo ? '2px solid #00BCD4' : '1px solid rgba(255,255,255,0.2)', color: mostrarTiempo ? '#00BCD4' : '#fff', fontSize: '1.2rem', padding: 0, transition: 'all 0.2s' }}>
+                        ⏱️
+                    </button>
+                </div>
+            )}
 
-                        {/* PANEL DE HERRAMIENTAS Y FILTROS SEGÚN PESTAÑA */}
-                        <div style={{ marginBottom: '10px', flexShrink: 0 }}>
-                            {pestanaGlobal === 'planetas' && (
-                                <input type="text" placeholder="🔍 Buscar sistema estelar..." value={filtroPlanetas} onChange={(e) => setFiltroPlanetas(e.target.value)} className="input-filtro-galactico" />
-                            )}
-                            
-                            {pestanaGlobal === 'misiones' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '5px' }}>
-                                        <button onClick={() => setMostrarFiltrosMision(!mostrarFiltrosMision)} style={{ flex: 1, backgroundColor: '#333', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }}>⚙️ Filtros Avanzados</button>
-                                        {esGM && <button onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }} style={{ backgroundColor: '#F44336', color: '#fff', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer' }} title="Crear contrato manual">📝</button>}
-                                    </div>
-                                    
-                                    {mostrarFiltrosMision && (
-                                        <div style={{ backgroundColor: '#111', padding: '10px', borderRadius: '4px', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '5px', animation: 'fadeIn 0.2s ease' }}>
-                                            <div style={{ display: 'flex', gap: '5px' }}>
-                                                <select value={filtrosMision.rango} onChange={e => setFiltrosMision({...filtrosMision, rango: e.target.value})} style={{flex: 1, padding: '4px', background: '#222', color: '#fff', border: '1px solid #444'}}>
-                                                    <option value="">Rango (Todos)</option><option value="E">E</option><option value="D">D</option><option value="C">C</option><option value="B">B</option><option value="A">A</option><option value="S">S</option>
-                                                </select>
-                                                <select value={filtrosMision.peligrosidad} onChange={e => setFiltrosMision({...filtrosMision, peligrosidad: e.target.value})} style={{flex: 1, padding: '4px', background: '#222', color: '#fff', border: '1px solid #444'}}>
-                                                    <option value="">Peligro (Todos)</option><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option><option value="Extrema">Extrema</option>
-                                                </select>
-                                            </div>
-                                            <input type="number" placeholder="Recompensa Mínima (Ej: 1000)" value={filtrosMision.minRecompensa} onChange={e => setFiltrosMision({...filtrosMision, minRecompensa: e.target.value})} className="input-filtro-galactico" style={{ padding: '4px' }} />
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#aaa', cursor: 'pointer' }}>
-                                                <input type="checkbox" checked={filtrosMision.especial} onChange={e => setFiltrosMision({...filtrosMision, especial: e.target.checked})} /> Solo Botín Especial
-                                            </label>
-                                            <button onClick={() => setFiltrosMision({rango: '', peligrosidad: '', minRecompensa: '', especial: false})} style={{ background: 'none', border: '1px solid #444', color: '#aaa', padding: '4px', cursor: 'pointer', marginTop: '4px' }}>Limpiar Filtros</button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* CONTENIDO SCROLLABLE DE PESTAÑAS */}
-                        <div className="scroll-interno" style={{ overflowY: 'auto', flex: 1, paddingRight: '5px' }}>
-                            {pestanaGlobal === 'planetas' && (
-                                [...planetas].filter(p => p.nombre.toLowerCase().includes(filtroPlanetas.toLowerCase())).sort((a,b) => a.nombre.localeCompare(b.nombre)).map(p => (
-                                    <div key={p.id} style={{ backgroundColor: '#1a1a2e', padding: '12px', borderRadius: '6px', marginBottom: '8px', borderLeft: `4px solid ${p.tieneRele ? '#9C27B0' : '#00BCD4'}`, cursor: 'pointer' }} onClick={() => { setOrigenSeleccion('tablon'); setPlanetaSelId(p.id); }}>
-                                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#fff' }}>{p.nombre}</div>
-                                        <div style={{ fontSize: '0.75rem', color: '#aaa' }}>{p.region}</div>
-                                    </div>
-                                ))
-                            )}
-                            {pestanaGlobal === 'misiones' && (
-                                misionesFiltradas.length === 0 ? <p style={{ textAlign: 'center', color: '#555', marginTop: '40px', fontStyle: 'italic' }}>No hay contratos con esos filtros.</p>
-                                : misionesFiltradas.map(m => (
-                                    <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole} isGlobalContext={true} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />
-                                ))
-                            )}
-                            {pestanaGlobal === 'escuadrones' && (
-                                escuadronesOrdenados.map(esc => {
-                                    const comandante = soldados.find(s => String(s.id) === String(esc.lider_id));
-                                    const ubi = planetas.find(p => String(p.id) === String(esc.ubicacion_actual_id));
-                                    const dest = planetas.find(p => String(p.id) === String(esc.ubicacion_destino_id));
-                                    const enViaje = esc.estado_movimiento === 'En Tránsito';
-                                    const esMia = esc.faccion === userRole;
-
-                                    // NUEVO: Verificamos en qué misión está actualmente asignado
-                                    const misionActual = misiones.find(m => (m.escuadrones_id || []).includes(esc.id));
-                                    const enOperacion = misionActual && misionActual.estado === 'Desplegada';
-
-                                    return (
-                                        <div key={esc.id} style={{ backgroundColor: '#1a1a2e', padding: '12px', borderRadius: '6px', marginBottom: '8px', borderLeft: `4px solid ${enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50')}`, cursor: 'pointer' }} onClick={() => { if (ubi) { setOrigenSeleccion('tablon'); setPlanetaSelId(ubi.id); } else if (esc.coords_espacio_profundo) { setVueloDirecto([esc.coords_espacio_profundo.y, esc.coords_espacio_profundo.x]); } }}>
-                                            <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: esMia ? '#4CAF50' : '#fff' }}>🛡️ {esc.nombre} {esMia && '(Tus Tropas)'}</div>
-                                            <div style={{ fontSize: '0.75rem', color: '#aaa' }}>Cmdte: {comandante ? comandante.nombre : 'Central'}</div>
-                                            
-                                            {/* UI ACTUALIZADA: Muestra claramente si está en base, viajando o peleando */}
-                                            <div style={{ fontSize: '0.7rem', marginTop: '4px', fontWeight: 'bold' }}>
-                                                {enViaje ? (
-                                                    <span style={{ color: '#FF9800' }}>🚀 Viajando a: {dest?.nombre || 'Desconocido'}</span>
-                                                ) : enOperacion ? (
-                                                    <span style={{ color: '#F44336' }}>⚔️ En Operación: {misionActual.titulo}</span>
-                                                ) : (
-                                                    <span style={{ color: '#4CAF50' }}>🛡️ Estacionado en: {ubi?.nombre || 'Espacio Profundo'}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )
-                                })
-                            )}
-                        </div>
-                    </div>
-
-                ) : (
-                    // ESTADO LOCAL: TELEMETRÍA DEL PLANETA
-                    <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', height: '100%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #00BCD4', paddingBottom: '10px', marginBottom: '10px', flexShrink: 0 }}>
-                            <div>
-                                <h2 style={{ margin: 0, color: '#00BCD4', textTransform: 'uppercase' }}>{planetaSel.nombre}</h2>
-                                <span style={{ fontSize: '0.8rem', color: '#888' }}>{planetaSel.region} | CUADRANTE {planetaSel.cuadrante}</span>
-                            </div>
-                            <button onClick={() => setPlanetaSelId(null)} style={{ background: 'none', border: 'none', color: '#F44336', fontSize: '1.5rem', cursor: 'pointer', lineHeight: '1' }}>✖</button>
-                        </div>
-                        
-                        {esGM && (
-                            <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px dashed #3f3f5a', flexShrink: 0 }}>
-                                <button className="btn-gm-mini" onClick={() => setModoMoverPines(!modoMoverPines)} style={{ backgroundColor: modoMoverPines ? '#4CAF50' : '#FF9800', color: '#111' }}>{modoMoverPines ? '✅' : '📍'} <span className="btn-texto">{modoMoverPines ? 'GUARDAR' : 'MOVER'}</span></button>
-                                <button className="btn-gm-mini" onClick={() => { setPlanetaAEditar(planetaSel); setModalOpen(true); }} style={{ backgroundColor: '#222', color: '#fff', border: '1px solid #555' }}>⚙️ <span className="btn-texto">EDITAR</span></button>
-                                <button className="btn-gm-mini" onClick={() => setModoConexion(planetaSel)} style={{ backgroundColor: '#00BCD4', color: '#111' }}>🔗 <span className="btn-texto">RELÉS</span></button>
-                            </div>
-                        )}
-
-                        <div className="scroll-interno" style={{ overflowY: 'auto', flex: 1, paddingRight: '5px' }}>
-                            <div style={{ marginBottom: '15px', backgroundColor: '#111', padding: '12px', borderRadius: '4px', borderLeft: `3px solid ${planetaSel.descripcion ? '#00BCD4' : '#333'}`, fontSize: '0.85rem', color: planetaSel.descripcion ? '#7ecd74' : '#666', lineHeight: '1.4' }}>
-                                {planetaSel.descripcion && planetaSel.descripcion.trim() !== "" ? planetaSel.descripcion : "Sin datos en el Códex."}
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <h4 style={{ color: '#FFC107', borderBottom: '1px solid #333', paddingBottom: '5px', margin: '0 0 10px 0' }}>📜 CONTRATOS EN SECTOR</h4>
-                                    {misiones.filter(m => String(m.ubicacion_id) === String(planetaSel.id)).length === 0 ? (
-                                        <p style={{ fontSize: '0.8rem', color: '#555' }}>No hay operaciones activas aquí.</p>
-                                    ) : (
-                                        misiones.filter(m => String(m.ubicacion_id) === String(planetaSel.id)).map(m => (
-                                            <TarjetaMisionGlobal key={m.id} m={m} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole}  isGlobalContext={false} misionExpandida={misionExpandidaId} setMisionExpandida={setMisionExpandidaId} setPlanetaSelId={setPlanetaSelId} setOrigenSeleccion={setOrigenSeleccion} setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision} />                                        
-                                        ))
-                                    )}
-                                    {/* BOTÓN EXCLUSIVO DEL GM PARA CREAR CONTRATO AQUÍ */}
-                                    {esGM && (
-                                        <button 
-                                            onClick={() => { 
-                                                // Si tu ModalMision acepta que le pases el ID del planeta para pre-seleccionarlo, puedes usar:
-                                                setMisionParaEditar({ ubicacion_id: planetaSel.id }); 
-                                                // Si falla porque cree que estás editando una misión, usa null como estaba antes:
-                                                // setMisionParaEditar(null); 
-                                                setIsModalMisionOpen(true); 
-                                            }} 
-                                            style={{ backgroundColor: '#F44336', color: '#fff', border: 'none', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                                            title={`Crear contrato en ${planetaSel.nombre}`}
-                                        >
-                                            + Nuevo Contrato
-                                    </button>
-                                )}
-                                </div>
-
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <h4 style={{ color: '#4CAF50', borderBottom: '1px solid #333', paddingBottom: '5px', margin: '0 0 10px 0' }}>🛰️ HANGAR DE ESCUADRONES</h4>
-                                    {escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planetaSel.id)).length === 0 ? (
-                                        <p style={{ fontSize: '0.8rem', color: '#555' }}>No hay fuerzas aliadas estacionadas aquí.</p>
-                                    ) : (
-                                        escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planetaSel.id)).map(esc => {
-                                            const enMision = misiones.some(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(esc.id));
-                                            const puedeMover = !enMision && (esGM || esc.faccion === userRole);
-                                            const comandante = soldados.find(s => String(s.id) === String(esc.lider_id));
-
-                                            return (
-                                                <div 
-                                                    key={esc.id} 
-                                                    draggable={puedeMover}
-                                                    onDragStart={(e) => {
-                                                        if (puedeMover) {
-                                                            e.dataTransfer.setData("escuadron_id", esc.id);
-                                                            e.currentTarget.style.opacity = '0.5'; 
-                                                        }
-                                                    }}
-                                                    onDragEnd={(e) => { e.currentTarget.style.opacity = '1'; }}
-                                                    style={{ backgroundColor: '#1a2e1a', padding: '10px', borderRadius: '4px', marginBottom: '10px', borderLeft: `4px solid #4CAF50`, cursor: puedeMover ? 'grab' : 'default' }}
-                                                >
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontWeight: 'bold' }}>🛡️ {esc.nombre}</span>
-                                                        {puedeMover && <button onClick={() => iniciarNavegacion(esc)} style={{ backgroundColor: '#4CAF50', color: '#fff', border: 'none', padding: '3px 8px', borderRadius: '2px', cursor: 'pointer', fontSize: '0.7rem' }}>NAVEGAR</button>}
-                                                    </div>
-                                                    {enMision && <div style={{ fontSize: '0.7rem', color: '#F44336', marginTop: '4px', fontWeight: 'bold' }}>BLOQUEADO: EN OPERACIÓN</div>}
-                                                    <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '2px' }}>Cmdte: <span style={{color: '#fff'}}>{comandante?.nombre || 'Central'}</span></div>
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+            {/* HUD FLOTANTE: NAVEGACIÓN Y CONTROL TEMPORAL */}
+            {escuadronSeleccionado && (
+                <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', zIndex: 1000, backgroundColor: escuadronSeleccionado.estado_movimiento === 'En Tránsito' ? 'rgba(255, 152, 0, 0.9)' : 'rgba(76, 175, 80, 0.9)', padding: '12px 25px', borderRadius: '30px', display: 'flex', gap: '20px', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', border: '2px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(5px)' }}>
+                    {escuadronSeleccionado.estado_movimiento !== 'En Tránsito' ? (
+                        <>
+                            <span style={{ fontWeight: 'bold', letterSpacing: '1px' }}>🛰️ RUTA: {escuadronSeleccionado.nombre}</span>
+                            {rutaPrevisualizada && <button onClick={confirmarSalto} style={{ backgroundColor: '#fff', color: '#4CAF50', border: 'none', padding: '6px 15px', borderRadius: '20px', fontWeight: 'bold', cursor: 'pointer', textTransform: 'uppercase' }}>🚀 INICIAR SALTO ({rutaPrevisualizada.tiempoDias}d)</button>}
+                        </>
+                    ) : (
+                        <>
+                            <span style={{ fontWeight: 'bold', letterSpacing: '1px' }}>💫 VIAJANDO: {escuadronSeleccionado.nombre}</span>
+                            <span style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '4px 12px', borderRadius: '15px', fontSize: '0.9rem', fontWeight: 'bold' }}><RelojETA fechaLlegada={escuadronSeleccionado.fecha_llegada} /></span>
+                            <button onClick={solicitarAbortoNavegacion} style={{ backgroundColor: '#F44336', color: '#fff', border: '1px solid #fff', padding: '4px 12px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold' }}>🚨 Abortar</button>
+                        </>
+                    )}
+                    <button onClick={cancelarTodo} style={{ background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', cursor: 'pointer', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>✖</button>
+                </div>
+            )}
 
             {/* MODALES TÁCTICOS */}
             {confirmacionDespliegue && (
@@ -1245,17 +591,6 @@ export default function MapaEstelar() {
                     </div>
                 </div>
             )}
-            {alertaAborto && alertaAborto.tipo === 'viaje' && (
-                <div className="modal-alerta-tactica" style={{zIndex: 9999}}>
-                    <div className="modal-alerta-caja">
-                        <h2 style={{ color: '#F44336', margin: '0 0 10px 0' }}>⚠️ DIRECTIVA DE ABORTO</h2>
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('refugio')}>↩️ Buscar refugio más cercano</button>
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('varado')}>🛑 Detener motores inmediatamente</button>
-                        <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '20px' }}>✖ Cancelar</button>
-                    </div>
-                </div>
-            )}
-            </div>
 
             <div style={{ position: 'relative', zIndex: 99999 }}>
                 <ModalMision isOpen={isModalMisionOpen} onClose={() => { setIsModalMisionOpen(false); setMisionParaEditar(null); }} misionData={misionParaEditar} />

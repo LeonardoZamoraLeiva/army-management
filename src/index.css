@@ -73,8 +73,35 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .chapa-militar:hover { transform: translateY(-15px) rotate(-2deg); border-color: #4CAF50; z-index: 10 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.8); }
 .chapa-militar.seleccionada { border-color: #4CAF50; background: linear-gradient(145deg, #2a332a, #1a1a24); transform: translateY(-15px); z-index: 10; }
 .chapa-foto { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; border: 2px solid #555; margin-bottom: 5px; background-color: #111; }
-.chapa-militar h4 { font-size: 0.75rem !important; margin: 0 0 2px 0; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
-.chapa-militar p { font-size: 0.65rem !important; margin: 0; color: #888;}
+/* Textos de la Chapa - Optimizados para 2 líneas máximo */
+.chapa-militar h4 { 
+    font-size: 0.75rem !important; 
+    margin: 0 0 2px 0; 
+    color: #fff; 
+    
+    /* Magia de 2 líneas */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal; /* CRÍTICO: Esto anula el antiguo nowrap */
+    line-height: 1.2;
+}
+
+.chapa-militar p { 
+    font-size: 0.65rem !important; 
+    margin: 0; 
+    color: #888;
+    
+    /* EL TRÍO MÁGICO PARA 2 LÍNEAS */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    
+    overflow: hidden;
+    white-space: normal; /* Para matar el nowrap */
+    line-height: 1.1;
+}
 .chapa-estado { position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
 .estado-Activo { background-color: #4CAF50; box-shadow: 0 0 8px #4CAF50; }
 .estado-Herido { background-color: #FF9800; box-shadow: 0 0 8px #FF9800; }
@@ -227,7 +254,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
     
     /* Mantenemos el fondo pero sin borde */
     background-image: url("/assets/background_para_silueta_solamente.png");
-    background-size: 95% 90%;
+    background-size: 95% 100%;
     background-position: center;
     background-repeat: no-repeat;
 }
@@ -252,7 +279,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
     justify-content: center; 
 }
 
-.d3-retrato { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #9C27B0; margin-top: 12%; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+.d3-retrato { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid #9C27B0; ; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
 
 /* Panel de Stats oscuro translúcido */
 .d3-stats { 
@@ -678,4 +705,209 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .input-filtro-galactico:focus {
     border-color: #00BCD4;
     outline: none;
+}
+
+/* =========================================
+   BOTÓN GM UNIFICADO Y MERCADO EXPANDIBLE
+   ========================================= */
+
+/* Botón GM Universal (Reemplaza a la vieja casilla-opciones) */
+.btn-gm-editar {
+    background: #1a1a24;
+    border: 1px solid #00BCD4;
+    color: #00BCD4;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.8);
+}
+.btn-gm-editar:hover {
+    background: #00BCD4;
+    color: #111;
+    transform: rotate(90deg) scale(1.15);
+    box-shadow: 0 0 12px rgba(0, 188, 212, 0.8);
+}
+
+/* Animación de expansión del mercado perfeccionada */
+.mercado-item-compacto {
+    transition: all 0.3s ease;
+}
+.mercado-item-compacto:hover { 
+    background-color: #252533 !important; 
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.5);
+}
+.mercado-expandible {
+    overflow: hidden; /* CRÍTICO: Evita que el texto se salga cuando está cerrado */
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.3s ease;
+}
+.mercado-item-compacto:hover .mercado-expandible { 
+    max-height: 500px; /* Valor alto para que quepa todo el contenido sin importar su tamaño */
+    opacity: 1; 
+}
+
+/* =========================================
+   MEDALLAS HEXAGONALES (PERKS) - CORREGIDO
+   ========================================= */
+.contenedor-medallas-hexagonales {
+    display: flex;
+    flex-wrap: wrap;
+    /* GIGANTE: 35px vertical, 55px horizontal para que los textos no choquen jamás */
+    gap: 35px 55px; 
+    justify-content: center;
+    margin-top: 15px;
+    padding-bottom: 25px;
+}
+
+.badge-hex {
+    position: relative;
+    /* Ajustamos la proporción geométrica (más ancho para que quepa el círculo) */
+    width: 36px; 
+    height: 50px;
+    border-radius: 4px;
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+/* La magia geométrica: 3 rectángulos cruzados */
+.badge-hex:before,
+.badge-hex:after {
+    position: absolute;
+    width: inherit;
+    height: inherit;
+    border-radius: inherit;
+    background: inherit;
+    content: "";
+    top: 0; left: 0; right: 0; bottom: 0; margin: auto;
+}
+.badge-hex:before { transform: rotate(60deg); }
+.badge-hex:after { transform: rotate(-60deg); }
+
+.badge-hex:hover { transform: translateY(-4px) scale(1.05); z-index: 20; }
+
+/* El círculo interior */
+.badge-hex .circle {
+    /* El círculo (34px) ahora es MÁS PEQUEÑO que el hexágono (46px) */
+    width: 34px; 
+    height: 34px;
+    position: absolute;
+    background: #111118; /* Fondo oscuro del dashboard */
+    z-index: 10;
+    border-radius: 50%;
+    /* Centrado absoluto infalible */
+    top: 50%; 
+    left: 50%; 
+    transform: translate(-50%, -50%); 
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    border: 2px solid; 
+}
+
+/* El listón de texto */
+.badge-hex .ribbon {
+    position: absolute;
+    border-radius: 4px;
+    padding: 3px 6px;
+    width: max-content;
+    max-width: 110px; /* Para nombres de habilidad largos */
+    z-index: 11;
+    color: #fff;
+    /* Lo empujamos 18px hacia abajo para librar la punta del hexágono */
+    bottom: -18px; 
+    /* Centrado exacto respecto a la medalla */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    text-transform: uppercase;
+    background: linear-gradient(to bottom right, #444 0%, #111 100%);
+    border: 1px solid #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* TEMA INNATO: Verde Oscuro / Esmeralda */
+.badge-hex.green-dark {
+    background: linear-gradient(to bottom right, #4CAF50 0%, #1B5E20 100%);
+}
+.badge-hex.green-dark .circle { border-color: #4CAF50; color: #4CAF50; }
+
+/* TEMA ADQUIRIDO: Dorado / Oro */
+.badge-hex.gold {
+    background: linear-gradient(to bottom right, #e6ce6a 0%, #b7892b 100%);
+}
+.badge-hex.gold .circle { border-color: #e6ce6a; color: #e6ce6a; }
+
+/* =========================================
+   PERKS MINIMALISTAS (SOLO PARA ARMERÍA)
+   ========================================= */
+.contenedor-perks-minimalista {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.perk-pill {
+    background: #252533; /* Gris suave */
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.perk-pill.innato {
+    color: #00BCD4;
+    box-shadow: inset 0 0 5px rgba(0, 188, 212, 0.1);
+}
+
+.perk-pill.adquirido {
+    color: #FF9800;
+    box-shadow: inset 0 0 5px rgba(255, 152, 0, 0.1);
+}
+
+.perk-nivel-txt {
+    font-size: 0.65rem;
+    opacity: 0.7;
+    margin-left: 2px;
+}
+
+/* =========================================================
+   8. ESQUEMA HOLOGRÁFICO (EXOTRAJE VECTORIAL)
+   ========================================================= */
+@keyframes pulseWarning {
+    0% { fill: rgba(255, 193, 7, 0.3); filter: drop-shadow(0 0 5px #FFC107); }
+    100% { fill: rgba(255, 193, 7, 0.8); filter: drop-shadow(0 0 15px #FFC107); }
+}
+
+.poligono-activo { 
+    fill: rgba(0, 188, 212, 0.6); 
+    filter: drop-shadow(0 0 8px #00BCD4); 
+    transition: all 0.3s ease; 
+}
+
+.poligono-inactivo { 
+    fill: rgba(0, 188, 212, 0.05); 
+    transition: all 0.3s ease; 
+}
+
+.poligono-alerta { 
+    animation: pulseWarning 0.8s infinite alternate; 
+    stroke: #FFC107; 
 }

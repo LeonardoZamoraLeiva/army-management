@@ -3,13 +3,15 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
 
+// DICCIONARIO CENTRAL DE ESPECIALIDADES
 const LISTA_ESPECIALIDADES = [
-    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina de Combate", "Criptografía", "Astronavegación"] },
-    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador"] },
-    { grupo: "Combate Especializado (STR/CON)", items: ["Demoliciones", "Artillería Pesada", "CQC", "Supervivencia"] },
-    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión / Engaño"] },
-    { grupo: "Anomalías / Poderes (Especial)", items: ["Percepción Aumentada", "Habilidades especiales", "Piloto de Combate"] },
-    { grupo: "Extras raros", items: ["Usuario Nen"] }
+    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
+    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
+    { grupo: "Combate Especializado (STR/CON)", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas", "Atleta"] },
+    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión", "Engaño", "Gestión", "Apostador"] },
+    { grupo: "Conocimiento (SAB)", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
+    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] },
+    { grupo: "Extras Raros (SOLO GM)", items: ["Nen", "Suerte", "Biótico", "Psíquico", "Cibernético"] }
 ];
 
 export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
