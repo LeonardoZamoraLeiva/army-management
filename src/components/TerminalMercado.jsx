@@ -13,27 +13,31 @@ const COLOR_RAREZA = {
 const PESO_RAREZA = { 'Legendario': 5, 'Muy Raro': 4, 'Raro': 3, 'Poco Común': 2, 'Común': 1 };
 
 export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOpen }) {
-    const { equipo, recargarTodo, userRole, facciones } = useData();
+    // 1. CORRECCIÓN: Ahora leemos "comandantes" en lugar de "facciones"
+    const { equipo, recargarTodo, userRole, comandantes } = useData();
     const [procesando, setProcesando] = useState(false);
     const esGM = userRole === 'GM';
 
     const mercadoDisponible = equipo
+        // .filter(eq => eq.propietario === 'Mercado' && eq.supertipo === 'Equipo' && eq.tipo.startsWith(filtro) && eq.stock > 0)
         .filter(eq => eq.propietario === 'Mercado' && eq.tipo.startsWith(filtro) && eq.stock > 0)
         .sort((a, b) => (PESO_RAREZA[b.rareza] || 0) - (PESO_RAREZA[a.rareza] || 0));
 
-    const miFaccion = facciones?.find(f => f.nombre === userRole);
+    // 2. CORRECCIÓN: Buscamos en la lista de comandantes
+    const miFaccion = comandantes?.find(c => c.nombre === userRole);
     const misCreditos = miFaccion?.creditos || 0;
 
     const comprarObjeto = async (item) => {
         if (esGM || !userRole || userRole === 'Espectador') return;
         if (misCreditos < (item.precio || 0)) return alert("Fondos insuficientes.");
         
-        // Las alertas nativas no soportan íconos, usamos la palabra completa
-        if (!window.confirm(`¿Comprar [${item.nombre}] por ${item.precio} créditos?`)) return;
+        // Formato con puntos para la alerta
+        const precioFormateado = (item.precio || 0).toLocaleString('es-CL');
+        if (!window.confirm(`¿Comprar [${item.nombre}] por ${precioFormateado} créditos?`)) return;
 
         setProcesando(true);
         try {
-            if (miFaccion) await updateDoc(doc(db, "facciones", miFaccion.id), { creditos: misCreditos - item.precio });
+            await updateDoc(doc(db, "comandantes", miFaccion.id), { creditos: misCreditos - item.precio });
             await updateDoc(doc(db, "equipo", item.id), { propietario: userRole });
             await recargarTodo();
         } catch (error) { console.error(error); }
@@ -48,7 +52,8 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                 </h3>
                 {!esGM && (
                     <div style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <GiCreditsCurrency size="1.2rem"/> {misCreditos.toLocaleString()}
+                        {/* FORMATO DE MILES APLICADO */}
+                        <GiCreditsCurrency size="1.2rem"/> {misCreditos.toLocaleString('es-CL')}
                     </div>
                 )}
             </div>
@@ -58,11 +63,11 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                     No hay inventario de esta categoría en los mercados locales.
                 </div>
             ) : (
-                /* AQUÍ ESTÁ EL SCROLL INTERNO PARA EL MERCADO */
                 <div className="scroll-interno" style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '25rem', overflowY: 'auto', paddingRight: '5px' }}>
                     {mercadoDisponible.map(item => {
                         const colorR = COLOR_RAREZA[item.rareza || 'Común'];
-                        const puedeComprar = misCreditos >= (item.precio || 0);
+                        const precioItemNum = item.precio || 0;
+                        const puedeComprar = misCreditos >= precioItemNum;
 
                         return (
                             <div 
@@ -78,7 +83,6 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                                     position: 'relative'
                                 }}
                             >
-                                {/* Cabecera visible */}
                                 <div style={{ padding: '12px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <span style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 'bold' }}>{item.nombre}</span>
@@ -86,24 +90,17 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                         <span style={{ color: '#4CAF50', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <GiCreditsCurrency /> {item.precio || 0}
+                                            {/* FORMATO DE MILES APLICADO */}
+                                            <GiCreditsCurrency /> {precioItemNum.toLocaleString('es-CL')}
                                         </span>
                                         {esGM && (
-                                            <div 
-                                                className="btn-gm-editar"
-                                                onClick={(e) => { 
-                                                    e.stopPropagation(); 
-                                                    setEquipoAEditar(item); 
-                                                    setIsModalOpen(true); 
-                                                }}
-                                            >
+                                            <div className="btn-gm-editar" onClick={(e) => { e.stopPropagation(); setEquipoAEditar(item); setIsModalOpen(true); }}>
                                                 <FaCog size="12px" />
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Contenido expandible al hacer hover */}
                                 <div className="mercado-expandible">
                                     <div style={{ padding: '0 15px 15px 15px', borderTop: '1px dashed #333', marginTop: '5px', paddingTop: '12px' }}>
                                         {item.foto && (
@@ -128,13 +125,12 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                                                     display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px'
                                                 }}
                                             >
-                                                {/* AQUÍ ESTÁ EL ARREGLO DEL ÍCONO EN EL BOTÓN */}
                                                 {esGM ? (
                                                     'VISTA DE ADMINISTRADOR (GM)'
                                                 ) : puedeComprar ? (
-                                                    <>ADQUIRIR POR <GiCreditsCurrency size="1.2rem"/> {item.precio}</>
+                                                    <>ADQUIRIR POR <GiCreditsCurrency size="1.2rem"/> {precioItemNum.toLocaleString('es-CL')}</>
                                                 ) : (
-                                                    <>FALTAN <GiCreditsCurrency size="1.2rem"/> {item.precio - misCreditos}</>
+                                                    <>FALTAN <GiCreditsCurrency size="1.2rem"/> {(precioItemNum - misCreditos).toLocaleString('es-CL')}</>
                                                 )}
                                             </button>
                                         </div>

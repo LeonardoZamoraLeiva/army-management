@@ -4,23 +4,22 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import ModalSoldado from './ModalSoldado';
 import CarruselHorizontal from './CarruselHorizontal';
-
 import SalonFama from './SalonFama';
 import DossierSoldado from './DossierSoldado';
 
-// 1. DICCIONARIO MÉDICO ACTUALIZADO (Soporta las nuevas palabras clave)
 export const obtenerConfigSalud = (estado) => {
     const salud = (estado || 'sano').toLowerCase();
     if (salud.includes('leve')) return { texto: '🟡 Operativo (Leves)', color: '#FFC107', tooltip: 'Penalizador: -20% al T.R.' };
     if (salud.includes('media')) return { texto: '🟠 Operativo (Moderadas)', color: '#FF9800', tooltip: 'Penalizador: -40% al T.R.' };
-    if (salud.includes('grave')) return { texto: '🔴 Operativo (Graves)', color: '#F44336', tooltip: 'Penalizador: -65% al T.R.' };
+    if (salud.includes('grave') && !salud.includes('gravísim')) return { texto: '🔴 Operativo (Graves)', color: '#F44336', tooltip: 'Penalizador: -65% al T.R.' };
     if (salud.includes('letal') || salud.includes('crític') || salud.includes('gravísima')) return { texto: '🩸 Inactivo (Letal)', color: '#9C27B0', tooltip: 'Penalizador: -100% al T.R. (Incapacitado)' };
     if (salud.includes('muerto') || salud === 'kia') return { texto: '✝️ K.I.A.', color: '#555', tooltip: 'Baja Permanente' };
     return { texto: '🟢 Operativo', color: '#4CAF50', tooltip: 'T.R. Normal' };
 };
 
 export default function Barracones() {
-    const { soldados, escuadrones, equipo, recargarTodo, userRole } = useData();
+    // 1. AÑADIMOS PLANETAS A LA EXTRACCIÓN
+    const { soldados, escuadrones, equipo, planetas, recargarTodo, userRole } = useData();
     const [soldadoSeleccionado, setSoldadoSeleccionado] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [soldadoParaEditar, setSoldadoParaEditar] = useState(null);
@@ -37,7 +36,6 @@ export default function Barracones() {
     const [faccionesColapsadas, setFaccionesColapsadas] = useState({});
     const [inicializado, setInicializado] = useState(false);
 
-    // VIGÍA DE ACTUALIZACIÓN DEL SOLDADO SELECCIONADO
     useEffect(() => {
         if (soldadoSeleccionado) {
             const soldadoActualizado = soldados.find(s => s.id === soldadoSeleccionado.id);
@@ -45,12 +43,12 @@ export default function Barracones() {
         }
     }, [soldados, soldadoSeleccionado]); 
 
-// 🏥 SISTEMA MÉDICO AUTÓNOMO (Ahora es una función independiente)
+    // 🏥 SISTEMA MÉDICO AUTÓNOMO (Con Hospitales y Pausa Táctica)
     const procesarHospital = async (listaSoldados) => {
         const now = Date.now();
         const DIA_MS = 24 * 60 * 60 * 1000;
-        const TIEMPOS_CURACION = { 'leve': 2 * DIA_MS, 'media': 4 * DIA_MS, 'grave': 8 * DIA_MS, 'letal': 16 * DIA_MS };
-        const SIGUIENTE_ESTADO = { 'letal': 'Grave', 'grave': 'Media', 'media': 'Leve', 'leve': 'Sano' };
+        const TIEMPOS_CURACION = { 'leve': 2 * DIA_MS, 'media': 4 * DIA_MS, 'grave': 8 * DIA_MS, 'letal': 16 * DIA_MS, 'gravísima': 16 * DIA_MS };
+        const SIGUIENTE_ESTADO = { 'letal': 'Grave', 'gravísima': 'Grave', 'grave': 'Media', 'media': 'Leve', 'leve': 'Sano' };
         let huboCambios = false;
 
         for (let s of listaSoldados) {
@@ -59,8 +57,8 @@ export default function Barracones() {
             
             if (estadoDb.includes('leve')) estadoClave = 'leve';
             else if (estadoDb.includes('media')) estadoClave = 'media';
-            else if (estadoDb.includes('grave')) estadoClave = 'grave';
-            else if (estadoDb.includes('letal') || estadoDb.includes('gravísim')) estadoClave = 'letal';
+            else if (estadoDb.includes('grave') && !estadoDb.includes('gravísim')) estadoClave = 'grave';
+            else if (estadoDb.includes('letal') || estadoDb.includes('gravísim')) estadoClave = 'gravísima';
             else if (estadoDb.includes('muerto') || estadoDb === 'kia') estadoClave = 'muerto';
 
             if (estadoClave === 'sano' || estadoClave === 'muerto') continue;
@@ -70,24 +68,46 @@ export default function Barracones() {
                 continue;
             }
 
+            // DETECCIÓN DE CONTEXTO TÁCTICO
+            const escuadron = escuadrones.find(e => e.lider_id === s.id || (e.miembros || []).includes(s.id));
+            let enMision = false;
+            let multHospital = 1; // 1 = Normal, 0.5 = Doble velocidad
+
+            if (escuadron) {
+                // Si están en viaje o misión, NO CURAN.
+                if (escuadron.estado_movimiento === 'En Tránsito' || escuadron.estado === 'Desplegada' || escuadron.estado === 'Desplegado') {
+                    enMision = true;
+                } else if (escuadron.ubicacion_actual_id) {
+                    // Si están en base, revisamos si el planeta tiene un Hospital
+                    const planeta = planetas.find(p => p.id === escuadron.ubicacion_actual_id);
+                    if (planeta && planeta.infraestructura === 'Hospital') {
+                        multHospital = 0.5; 
+                    }
+                }
+            }
+
+            if (enMision) continue; // Saltamos a los que están combatiendo.
+
             let tiempoEstado = s.fecha_estado;
             let estadoActual = estadoClave;
             let cambio = false;
 
-            // FÓRMULA MATEMÁTICA CORREGIDA: Sube los peldaños de curación
-            while (estadoActual !== 'sano' && TIEMPOS_CURACION[estadoActual] && (now - tiempoEstado) >= TIEMPOS_CURACION[estadoActual]) {
-                tiempoEstado += TIEMPOS_CURACION[estadoActual];
-                estadoActual = SIGUIENTE_ESTADO[estadoActual].toLowerCase();
-                cambio = true;
+            // FÓRMULA MATEMÁTICA CON ACELERADOR DE HOSPITAL
+            while (estadoActual !== 'sano' && TIEMPOS_CURACION[estadoActual]) {
+                const tiempoRequerido = TIEMPOS_CURACION[estadoActual] * multHospital;
+                if ((now - tiempoEstado) >= tiempoRequerido) {
+                    tiempoEstado += tiempoRequerido;
+                    estadoActual = SIGUIENTE_ESTADO[estadoActual].toLowerCase();
+                    cambio = true;
+                } else {
+                    break;
+                }
             }
 
             if (cambio) {
                 try {
                     const estadoFormateado = estadoActual === 'sano' ? 'Sano' : estadoActual.charAt(0).toUpperCase() + estadoActual.slice(1);
-                    await updateDoc(doc(db, "soldados", s.id), {
-                        estado_salud: estadoFormateado,
-                        fecha_estado: tiempoEstado 
-                    });
+                    await updateDoc(doc(db, "soldados", s.id), { estado_salud: estadoFormateado, fecha_estado: tiempoEstado });
                     huboCambios = true;
                 } catch(e) { console.error("Error curando:", e); }
             }
@@ -95,7 +115,6 @@ export default function Barracones() {
         if (huboCambios) await recargarTodo();
     };
 
-    // VIGÍA INICIAL: Corre el hospital al abrir la pestaña y ordena los acordeones
     useEffect(() => {
         if (soldados.length > 0 && !inicializado) {
             const faccionesSet = new Set(soldados.map(s => s.lider || "Libres"));
@@ -105,56 +124,39 @@ export default function Barracones() {
                 estadoInicialColapsos[userRole] = false;
             }
             setFaccionesColapsadas(estadoInicialColapsos);
-            
-            // Pasamos visita médica al cargar
             procesarHospital(soldados);
             setInicializado(true);
         }
     }, [soldados, userRole, inicializado]);
 
-    // MODO DIOS: Botón DEV Corregido
     const simularPasoDelTiempo = async () => {
         if (!window.confirm("⚙️ DEV: ¿Avanzar el reloj biológico 24 horas para todos los heridos?")) return;
         const DIA_MS = 24 * 60 * 60 * 1000;
         let soldadosSimulados = [];
-        
-        // 1. Les restamos 1 día a todos en la base de datos
         for (let s of soldados) {
             if (s.fecha_estado && s.estado_salud !== 'Sano' && s.estado_salud !== 'Muerto') {
                 const nuevaFecha = s.fecha_estado - DIA_MS;
                 await updateDoc(doc(db, "soldados", s.id), { fecha_estado: nuevaFecha });
                 soldadosSimulados.push({ ...s, fecha_estado: nuevaFecha });
-            } else {
-                soldadosSimulados.push(s);
-            }
+            } else { soldadosSimulados.push(s); }
         }
-        
-        // 2. Obligamos al hospital a revisar si alguien sanó gracias a este día extra
         await procesarHospital(soldadosSimulados);
         await recargarTodo();
-        alert("⏱️ El tiempo ha avanzado 24 horas y el hospital ha dado las altas correspondientes.");
+        alert("⏱️ El tiempo ha avanzado 24 horas.");
     };
-
-    
 
     const toggleAcordeon = (faccion) => {
         setFaccionesColapsadas(prev => {
             const newState = {};
-            // Forzamos a que TODOS se cierren (true = colapsado)
             Object.keys(porLider).forEach(k => newState[k] = true);
-            
-            // Si el que clickeamos estaba cerrado, lo abrimos (false). 
-            // Si ya estaba abierto, se quedará cerrado (Toggle normal).
-            if (prev[faccion] === true) {
-                newState[faccion] = false;
-            }
+            if (prev[faccion] === true) newState[faccion] = false;
             return newState;
         });
     };
+    
     const abrirModalNuevo = (faccionSugerida) => { setSoldadoParaEditar({ lider: faccionSugerida }); setIsModalOpen(true); };
     const abrirModalEditar = () => { setSoldadoParaEditar(soldadoSeleccionado); setIsModalOpen(true); };
 
-    // ORDENAMIENTO DE TROPAS
     const porLider = {};
     soldados.forEach(s => {
         const faccion = s.lider || "Libres";
@@ -163,19 +165,16 @@ export default function Barracones() {
     });
     Object.keys(porLider).forEach(faccion => porLider[faccion].sort((a, b) => (a.orden || 0) - (b.orden || 0)));
 
-    // 🥇 ORDENAMIENTO DE ACORDEONES: El usuario activo SIEMPRE es el número 1 de la lista
     const faccionesOrdenadas = Object.keys(porLider).sort((a, b) => {
         if (a === userRole) return -1;
         if (b === userRole) return 1;
         return a.localeCompare(b);
     });
 
-    // DRAG & DROP
     const handleDragStart = (e, soldado) => {
         if (!puedeEditar(soldado)) { e.preventDefault(); return; }
         setDraggedItem(soldado); e.dataTransfer.effectAllowed = "move";
     };
-
     const handleDragOverItem = (e, targetSoldier) => {
         e.preventDefault(); e.stopPropagation();
         if (draggedItem && draggedItem.id === targetSoldier.id) return; 
@@ -183,7 +182,6 @@ export default function Barracones() {
         setDragTargetId(targetSoldier.id);
         setDropPosition((e.clientX - rect.left) < rect.width / 2 ? 'left' : 'right');
     };
-
     const handleDrop = async (e, targetSoldier, targetFaccion) => {
         e.preventDefault(); e.stopPropagation();
         setDragOverZone(null); setDragTargetId(null); setDropPosition(null);
@@ -202,17 +200,15 @@ export default function Barracones() {
         setDraggedItem(null);
     };
 
-
     return (
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div id="dashboard-barracones" style={{ display: 'flex', gap: '20px' }}>
-                {/* Añade este botón oculto solo para el GM */}
                 {esGM && (
                     <button onClick={simularPasoDelTiempo} style={{ position: 'absolute', top: '10px', left: '10px', background: '#F44336', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', zIndex: 100 }}>
                         ⏱️ DEV: +1 Día
                     </button>
                 )}
-                {/* COLUMNA IZQUIERDA: Acordeones Estilizados */}
+                
                 <div id="columna-lista" style={{ flex: 1.2, minWidth: 0, backgroundColor: 'transparent', height: 'fit-content' }}>
                     <div className="contenedor-lideres">
                         {faccionesOrdenadas.map((faccion) => {
@@ -222,28 +218,13 @@ export default function Barracones() {
 
                             return (
                                 <div key={faccion} className={`grupo-lider zona-drop ${dragOverZone === faccion ? 'drag-over' : ''}`} 
-                                    style={{ 
-                                        marginBottom: '15px', 
-                                        // Estilo de Cristal Ahumado (Glassmorphism)
-                                        backgroundColor: 'rgba(15, 20, 30, 0.6)', 
-                                        border: `1px solid ${esMiFaccion ? 'rgba(76, 175, 80, 0.5)' : 'rgba(0, 188, 212, 0.2)'}`, 
-                                        borderRadius: '8px', 
-                                        overflow: 'hidden',
-                                        boxShadow: esMiFaccion ? '0 0 15px rgba(76, 175, 80, 0.1)' : 'inset 0 0 10px rgba(0,0,0,0.5)',
-                                        backdropFilter: 'blur(4px)'
-                                    }} 
+                                    style={{ marginBottom: '15px', backgroundColor: 'rgba(15, 20, 30, 0.6)', border: `1px solid ${esMiFaccion ? 'rgba(76, 175, 80, 0.5)' : 'rgba(0, 188, 212, 0.2)'}`, borderRadius: '8px', overflow: 'hidden', boxShadow: esMiFaccion ? '0 0 15px rgba(76, 175, 80, 0.1)' : 'inset 0 0 10px rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} 
                                     onDragOver={(e) => { e.preventDefault(); setDragOverZone(faccion); }} 
                                     onDragLeave={() => setDragOverZone(null)} 
                                     onDrop={(e) => handleDrop(e, null, faccion)}
                                 >
-                                    {/* Cabecera del Acordeón con estilo de Panel Táctico */}
                                     <div className="cabecera-lider" 
-                                        style={{ 
-                                            backgroundColor: esMiFaccion ? 'rgba(76, 175, 80, 0.1)' : 'rgba(0, 188, 212, 0.05)',
-                                            borderBottom: estaColapsado ? 'none' : `1px solid ${esMiFaccion ? 'rgba(76, 175, 80, 0.3)' : 'rgba(0, 188, 212, 0.2)'}`, 
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
-                                            padding: '12px 15px', transition: 'all 0.3s ease', cursor: 'pointer'
-                                        }} 
+                                        style={{ backgroundColor: esMiFaccion ? 'rgba(76, 175, 80, 0.1)' : 'rgba(0, 188, 212, 0.05)', borderBottom: estaColapsado ? 'none' : `1px solid ${esMiFaccion ? 'rgba(76, 175, 80, 0.3)' : 'rgba(0, 188, 212, 0.2)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 15px', transition: 'all 0.3s ease', cursor: 'pointer' }} 
                                         onClick={() => toggleAcordeon(faccion)}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -251,9 +232,7 @@ export default function Barracones() {
                                             <h3 style={{ color: '#fff', textTransform: 'uppercase', fontSize: '0.9rem', letterSpacing: '2px', margin: 0, textShadow: esMiFaccion ? '0 0 5px rgba(76,175,80,0.5)' : 'none' }}>
                                                 {faccion} {esMiFaccion && <span style={{fontSize: '0.6rem', color: '#4CAF50'}}>(TU ESCUADRÓN)</span>}
                                             </h3>
-                                            <span className="contador-tropas" style={{ backgroundColor: esMiFaccion ? '#4CAF50' : '#00BCD4', color: '#111', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-                                                {tropas.length}
-                                            </span>
+                                            <span className="contador-tropas" style={{ backgroundColor: esMiFaccion ? '#4CAF50' : '#00BCD4', color: '#111', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{tropas.length}</span>
                                         </div>
                                         {(esGM || esMiFaccion) && (
                                             <button className="btn-reclutar-mini" onClick={(e) => { e.stopPropagation(); abrirModalNuevo(faccion); }}>
@@ -289,7 +268,6 @@ export default function Barracones() {
                     </div>
                 </div>
 
-                {/* COLUMNA DERECHA */}
                 <div id="columna-detalle" style={{ flex: 1.5 }}>
                     {!soldadoSeleccionado ? (
                         <SalonFama soldados={soldados} setSoldadoSeleccionado={setSoldadoSeleccionado} />
@@ -304,7 +282,6 @@ export default function Barracones() {
                         />
                     )}
                 </div>
-
             </div>
             <ModalSoldado isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} soldadoData={soldadoParaEditar} onDelete={() => { setSoldadoSeleccionado(null); setIsModalOpen(false); }} />
         </div>

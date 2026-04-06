@@ -3,7 +3,6 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
 
-// DICCIONARIO CENTRAL DE ESPECIALIDADES
 const LISTA_ESPECIALIDADES = [
     { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
     { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
@@ -19,10 +18,10 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
     const esGM = userRole === 'GM';
 
     const estadoInicial = {
-        nombre: '', modelo: '', fabricante: '', entorno: 'Terrestre', rol: 'Transporte',
-        req_rango: 1, hp: 0, ac: 0, vel: 0, armamento: '', pasajeros: 0, tripulacion: '', 
-        mod_cr: 0, foto: '', hiperimpulsor: 2, motor_subluz: 3, 
-        habilidad: '', // <-- Añadimos el campo de habilidad base
+        nombre: '', modelo: '', categoria: 'Nave', rol: 'Transporte',
+        entorno: 'Estándar', tamano: 'Mediana', capacidad_mods: 3, 
+        casco: 1, mod_cr: 0, hiperimpulsor: 2, motor_subluz: 3, 
+        habilidad: '', descripcion: '', foto: '',
         propietario: esGM ? 'Global' : (userRole || 'Global')
     };
     
@@ -47,7 +46,12 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
 
     useEffect(() => {
         if (vehiculoData) {
-            setFormData(vehiculoData);
+            setFormData({ 
+                ...estadoInicial, 
+                ...vehiculoData,
+                capacidad_mods: vehiculoData.capacidad_mods !== undefined ? vehiculoData.capacidad_mods : 3,
+                casco: vehiculoData.casco !== undefined ? vehiculoData.casco : 1
+            });
             setTags(parseHabilidad(vehiculoData.habilidad));
         } else {
             setFormData({ ...estadoInicial, propietario: esGM ? 'Global' : (userRole || 'Global') });
@@ -64,23 +68,29 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
         e.preventDefault();
         const dataAEnviar = {
             ...formData,
-            categoria: 'Vehículo',
-            req_rango: Number(formData.req_rango), hp: Number(formData.hp), ac: Number(formData.ac),
-            vel: Number(formData.vel), pasajeros: Number(formData.pasajeros), mod_cr: Number(formData.mod_cr),
-            hiperimpulsor: Number(formData.hiperimpulsor), motor_subluz: Number(formData.motor_subluz),
+            capacidad_mods: Number(formData.capacidad_mods),
+            casco: Number(formData.casco),
+            mod_cr: Number(formData.mod_cr),
+            hiperimpulsor: Number(formData.hiperimpulsor), 
+            motor_subluz: Number(formData.motor_subluz),
             habilidad: buildHabilidad(tags)
         };
 
+        // Limpiar basura de versiones viejas del código (Para mantener limpia la DB)
+        delete dataAEnviar.hp; delete dataAEnviar.ac; delete dataAEnviar.vel;
+        delete dataAEnviar.armamento; delete dataAEnviar.tripulacion; 
+        delete dataAEnviar.pasajeros; delete dataAEnviar.req_rango;
+
         try {
-            if (vehiculoData) await updateDoc(doc(db, "vehiculos", vehiculoData.id), dataAEnviar);
+            if (vehiculoData && vehiculoData.id) await updateDoc(doc(db, "vehiculos", vehiculoData.id), dataAEnviar);
             else await addDoc(collection(db, "vehiculos"), dataAEnviar);
             await recargarTodo();
             onClose();
-        } catch (error) { console.error("Error guardando vehículo:", error); }
+        } catch (error) { console.error("Error guardando activo:", error); }
     };
 
     const handleDelete = async () => {
-        if (!window.confirm(`¿Desmantelar el vehículo ${formData.nombre}?`)) return;
+        if (!window.confirm(`¿Desmantelar el activo ${formData.nombre}?`)) return;
         try {
             await deleteDoc(doc(db, "vehiculos", vehiculoData.id));
             await recargarTodo();
@@ -92,46 +102,124 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal" style={{ borderTop: '4px solid #795548', width: '550px' }}>
+            <div className="contenido-modal scroll-interno" style={{ borderTop: '4px solid #795548', width: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
-                <h2 style={{ color: '#795548', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>{vehiculoData ? '⚙️ Modificar Vehículo' : '🚀 Registrar Vehículo'}</h2>
+                <h2 style={{ color: '#795548', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>{vehiculoData?.id ? '⚙️ Modificar Activo' : '🚀 Registrar Activo'}</h2>
                 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="grupo-input"><label>Nombre / Identificador</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>Modelo</label><input name="modelo" value={formData.modelo} onChange={handleChange} /></div>
-                        
-                        <div className="grupo-input"><label>Entorno Óptimo</label><select name="entorno" value={formData.entorno} onChange={handleChange}><option>Terrestre</option><option>Aéreo</option><option>Acuático</option><option>Espacial</option></select></div>
-                        <div className="grupo-input"><label>Rol Táctico</label><select name="rol" value={formData.rol} onChange={handleChange}><option>Transporte</option><option>Asalto</option><option>Apoyo</option><option>Exploración</option></select></div>
-                        <div className="grupo-input"><label>Clase Hiperimpulsor</label><select name="hiperimpulsor" value={formData.hiperimpulsor} onChange={handleChange}><option value="0.5">Clase 0.5</option><option value="0.8">Clase 1</option><option value="1.2">Clase 2</option><option value="2.0">Clase 3</option><option value="3.0">Clase 4</option><option value="4.0">Clase 5</option></select></div>
-                        <div className="grupo-input"><label>Motor Subluz</label><select name="motor_subluz" value={formData.motor_subluz} onChange={handleChange}><option value="1">1 - Inter Planetario</option><option value="3">3 - Comercial Próximo</option><option value="6">6 - Extra Sistémico</option><option value="10">8 - Explorador Profundo</option></select></div>
-                        
-                        <div className="grupo-input"><label>HP (Integridad)</label><input type="number" name="hp" value={formData.hp} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>AC (Blindaje)</label><input type="number" name="ac" value={formData.ac} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>Velocidad (ft)</label><input type="number" name="vel" value={formData.vel} onChange={handleChange} /></div>
-                        <div className="grupo-input"><label>Rango Requerido</label><select name="req_rango" value={formData.req_rango} onChange={handleChange}><option value="1">I - Recluta</option><option value="2">II - Veterano</option><option value="3">III - Élite</option><option value="4">IV - N7</option><option value="5">V - Espectro</option></select></div>
-                        
-                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Armamento Integrado</label><input name="armamento" value={formData.armamento} onChange={handleChange} placeholder="Ej: 2x Cañones Láser Pesados" /></div>
-                        
-                        <div className="grupo-input"><label>Tripulación Req.</label><input name="tripulacion" value={formData.tripulacion} onChange={handleChange} /></div>
-                        <div className="grupo-input"><label>Cap. Pasajeros</label><input type="number" name="pasajeros" value={formData.pasajeros} onChange={handleChange} /></div>
-                        
-                        <div className="grupo-input"><label style={{ color: '#FFC107' }}>Propietario / Comandante:</label><select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} style={{ borderColor: '#FFC107' }} disabled={!esGM}><option value="GM">👑 Cofre del GM (Oculto)</option><option value="Global">🌐 Uso Global (Público)</option><option value="Cazador">🏳️ Cazador</option><option value="Lucian">🏳️ Lucian</option><option value="Brick">🏳️ Brick</option><option value="William">🏳️ William</option><option value="H">🏳️ H</option><option value="Pelonche (E-20)">🏳️ Pelonche</option></select></div>
-                        <div className="grupo-input"><label>Mod. T.R. (+)</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="any" /></div>
-                        
-                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} /></div>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    
+                    {/* 1. IDENTIDAD */}
+                    <div style={{ padding: '10px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '6px', border: '1px solid #333' }}>
+                        <h4 style={{ margin: '0 0 10px 0', color: '#aaa', borderBottom: '1px dashed #444', paddingBottom: '5px' }}>1. Identidad y Clasificación</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div className="grupo-input" style={{ margin: 0 }}><label>Nombre / Apodo</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
+                            <div className="grupo-input" style={{ margin: 0 }}><label>Modelo / Variante</label><input name="modelo" value={formData.modelo} onChange={handleChange} /></div>
+                            
+                            <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#00BCD4' }}>Categoría Principal</label>
+                                <select name="categoria" value={formData.categoria} onChange={handleChange} style={{ borderColor: '#00BCD4' }}>
+                                    <option value="Nave">Nave Espacial (Transporte)</option>
+                                    <option value="Vehículo">Vehículo Terrestre (Asalto)</option>
+                                    <option value="Droide">Unidad Droide</option>
+                                </select>
+                            </div>
+                            <div className="grupo-input" style={{ margin: 0 }}><label>Rol Táctico</label>
+                                <select name="rol" value={formData.rol} onChange={handleChange}>
+                                    <option>Transporte</option><option>Asalto</option><option>Apoyo</option><option>Exploración</option><option>Astromecánico</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
+                    {/* 2. CHASIS Y MODULARIDAD */}
+                    <div style={{ padding: '10px', backgroundColor: 'rgba(255, 152, 0, 0.05)', borderRadius: '6px', border: '1px solid rgba(255, 152, 0, 0.3)' }}>
+                        <h4 style={{ margin: '0 0 10px 0', color: '#FF9800', borderBottom: '1px dashed rgba(255, 152, 0, 0.3)', paddingBottom: '5px' }}>2. Arquitectura de Chasis</h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                            <div className="grupo-input" style={{ margin: 0 }}><label>Tamaño Físico</label>
+                                <select name="tamano" value={formData.tamano} onChange={handleChange}>
+                                    <option>Pequeña (Caza/Speeder)</option><option>Mediana (Carguero)</option><option>Grande (Corbeta)</option><option>Colosal (Crucero)</option>
+                                </select>
+                            </div>
+                            <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#4CAF50' }}>Nivel de Casco/Blindaje</label>
+                                <select name="casco" value={formData.casco} onChange={handleChange} style={{ borderColor: '#4CAF50' }}>
+                                    <option value="1">Nivel 1 (Civil - 0% Prevención)</option>
+                                    <option value="2">Nivel 2 (Ligero - 10% Prevención)</option>
+                                    <option value="3">Nivel 3 (Medio - 20% Prevención)</option>
+                                    <option value="4">Nivel 4 (Pesado - 35% Prevención)</option>
+                                    <option value="5">Nivel 5 (Acorazado - 50% Prevención)</option>
+                                </select>
+                            </div>
+                            <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#FF9800' }}>Ranuras Modulares</label>
+                                <input type="number" name="capacidad_mods" value={formData.capacidad_mods} onChange={handleChange} min="0" max="15" style={{ borderColor: '#FF9800' }} title="Módulos que pueden instalarse" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3. PROPULSIÓN Y ARMAMENTO */}
+                    <div style={{ padding: '10px', backgroundColor: 'rgba(0, 188, 212, 0.05)', borderRadius: '6px', border: '1px solid rgba(0, 188, 212, 0.3)' }}>
+                        <h4 style={{ margin: '0 0 10px 0', color: '#00BCD4', borderBottom: '1px dashed rgba(0, 188, 212, 0.3)', paddingBottom: '5px' }}>3. Propulsión y Poder de Fuego</h4>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', marginBottom: '10px' }}>
+                            <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#00BCD4' }}>Hyperdrive (Clase FTL)</label>
+                                <select name="hiperimpulsor" value={formData.hiperimpulsor} onChange={handleChange} style={{ borderColor: '#00BCD4' }}>
+                                    <option value="0">Sin Motor FTL</option>
+                                    <option value="0.5">Clase 0.5 (Ilegal/Experimental)</option>
+                                    <option value="1">Clase 1 (Militar Avanzado)</option>
+                                    <option value="1.5">Clase 1.5 (Patrullero Rápido)</option>
+                                    <option value="2">Clase 2 (Civil Estándar)</option>
+                                    <option value="3">Clase 3 (Carguero Pesado)</option>
+                                    <option value="4">Clase 4 (Transporte Masivo)</option>
+                                    <option value="5">Clase 5 (Económico)</option>
+                                    <option value="8">Clase 8 (Anticuado/Industrial)</option>
+                                    <option value="10">Clase 10 (Reserva/Emergencia)</option>
+                                </select>
+                            </div>
+                            <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#00BCD4' }}>Motor SubLuz (Atmosférico)</label>
+                                <select name="motor_subluz" value={formData.motor_subluz} onChange={handleChange} style={{ borderColor: '#00BCD4' }}>
+                                    <option value="1">Clase 1 (Maniobra Estación)</option>
+                                    <option value="2">Clase 2 (Atmosférico Pesado)</option>
+                                    <option value="3">Clase 3 (Comercial Estándar)</option>
+                                    <option value="4">Clase 4 (Carguero Rápido)</option>
+                                    <option value="5">Clase 5 (Patrullero Ligero)</option>
+                                    <option value="6">Clase 6 (Caza Estelar)</option>
+                                    <option value="8">Clase 8 (Interceptor)</option>
+                                    <option value="10">Clase 10 (Carreras/Extremo)</option>
+                                </select>
+                            </div>
+                        <div className="grupo-input" style={{ margin: 0 }}><label style={{ color: '#F44336' }}>Armamento (Bono T.R. Combate)</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="any" style={{ borderColor: '#F44336' }} /></div>
+                        </div>
+
+                    </div>
+
+                    {/* 4. LORE Y ARCHIVO TÉCNICO */}
+                    <div style={{ padding: '10px', backgroundColor: 'rgba(156, 39, 176, 0.05)', borderRadius: '6px', border: '1px solid rgba(156, 39, 176, 0.3)' }}>
+                        <h4 style={{ margin: '0 0 10px 0', color: '#9C27B0', borderBottom: '1px dashed rgba(156, 39, 176, 0.3)', paddingBottom: '5px' }}>4. Archivo Técnico y Lore</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div className="grupo-input" style={{ margin: 0 }}>
+                                <label>Descripción de Chasis, Tripulación y Lore</label>
+                                <textarea name="descripcion" value={formData.descripcion} onChange={handleChange} rows="3" style={{ width: '100%', backgroundColor: '#000', color: '#fff', padding: '10px', borderRadius: '4px', border: '1px solid #555' }} placeholder="Ej: Carguero corelliano modificado. Requiere 2 pilotos. Contiene marcas de garras en el fuselaje..."></textarea>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="grupo-input" style={{ margin: 0 }}><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} /></div>
+                                <div className="grupo-input" style={{ margin: 0 }}><label>Comandante Asignado:</label>
+                                    <select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} disabled={!esGM}>
+                                        <option value="GM">👑 Cofre del GM</option><option value="Global">🌐 Uso Público</option>
+                                        <option value="Cazador">🏳️ Cazador</option><option value="Lucian">🏳️ Lucian</option><option value="Brick">🏳️ Brick</option><option value="William">🏳️ William</option><option value="H">🏳️ H</option><option value="Pelonche (E-20)">🏳️ Pelonche</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 5. MÓDULOS DE FÁBRICA */}
                     <div style={{ backgroundColor: '#111118', padding: '15px', borderRadius: '5px', border: '1px solid #3f3f5a' }}>
-                        <label style={{ color: '#FF9800', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            Módulos de Apoyo (Tags)
-                            <button type="button" onClick={handleAddTag} style={{ backgroundColor: '#FF9800', color: '#111', border: 'none', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>+ Añadir Módulo</button>
+                        <label style={{ color: '#888', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            Módulos de Fábrica Pre-instalados
+                            <button type="button" onClick={handleAddTag} style={{ backgroundColor: '#444', color: '#fff', border: 'none', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}>+ Añadir Fijo</button>
                         </label>
-                        {tags.length === 0 && <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic', display: 'block', marginTop: '10px' }}>Este vehículo no ofrece especialidades tácticas a sus ocupantes.</span>}
                         {tags.map((t, idx) => (
                             <div key={idx} style={{ display: 'flex', gap: '10px', marginTop: '8px', alignItems: 'center' }}>
                                 <select value={t.tag} onChange={(e) => handleUpdateTag(idx, 'tag', e.target.value)} style={{ flex: 2, padding: '6px', backgroundColor: '#000', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}>
-                                    <option value="">-- Seleccionar Especialidad --</option>
+                                    <option value="">-- Seleccionar --</option>
                                     {LISTA_ESPECIALIDADES.map((cat, i) => (
                                         <optgroup key={i} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item}>{item}</option>)}</optgroup>
                                     ))}
@@ -145,9 +233,9 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
                         ))}
                     </div>
 
-                    <div className="botones-modal" style={{ justifyContent: vehiculoData ? 'space-between' : 'flex-end', marginTop: '15px' }}>
-                        {vehiculoData && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
-                        <button type="submit" className="btn-accion" style={{ backgroundColor: '#795548', color: '#fff' }}>Guardar en Hangar</button>
+                    <div className="botones-modal" style={{ justifyContent: vehiculoData?.id ? 'space-between' : 'flex-end', marginTop: '5px' }}>
+                        {vehiculoData?.id && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
+                        <button type="submit" className="btn-accion" style={{ backgroundColor: '#795548', color: '#fff' }}>Guardar Activo</button>
                     </div>
                 </form>
             </div>

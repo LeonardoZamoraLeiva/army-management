@@ -4,7 +4,6 @@ import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestor
 import { useData } from '../context/DataContext';
 
 export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
-    // AÑADIDO: Extraemos 'planetas' para poder buscar las rutas conectadas
     const { planetas, recargarTodo } = useData();
 
     const estadoInicial = {
@@ -13,7 +12,8 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
         cuadrante: '', 
         tieneRele: false,
         tipo: 'Planeta',
-        descripcion: '', // <-- Nuevo campo
+        infraestructura: 'Ninguna', // <-- NUEVA VARIABLE MÉDICA
+        descripcion: '',
         conexiones: [] 
     };
 
@@ -21,11 +21,8 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
 
     useEffect(() => {
         if (isOpen) {
-            if (planetaEdit) {
-                setFormData(planetaEdit);
-            } else {
-                setFormData(estadoInicial);
-            }
+            if (planetaEdit) setFormData(planetaEdit);
+            else setFormData(estadoInicial);
         }
     }, [isOpen, planetaEdit]);
 
@@ -37,47 +34,24 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (planetaEdit) {
-                await updateDoc(doc(db, "planetas", planetaEdit.id), formData);
-            } else {
-                await addDoc(collection(db, "planetas"), {
-                    ...formData,
-                    coords: coords
-                });
-            }
+            if (planetaEdit) await updateDoc(doc(db, "planetas", planetaEdit.id), formData);
+            else await addDoc(collection(db, "planetas"), { ...formData, coords: coords });
             await recargarTodo();
             onClose();
-        } catch (error) { 
-            console.error("Error guardando planeta:", error); 
-        }
+        } catch (error) { console.error("Error guardando planeta:", error); }
     };
 
-    // FUNCIÓN DE BORRADO EN CASCADA (Evita que el mapa colapse por rutas fantasma)
     const handleDelete = async () => {
-        if (!window.confirm(`¿Estás seguro de que deseas destruir el sistema ${formData.nombre}? ¡Esto también borrará permanentemente todas las rutas hiperespaciales conectadas a él!`)) return;
-        
+        if (!window.confirm(`¿Destruir el sistema ${formData.nombre}? ¡Esto borrará las rutas conectadas!`)) return;
         try {
-            // 1. Buscamos todos los planetas que tienen a este planeta en sus conexiones
             const promesasLimpieza = planetas
                 .filter(p => p.conexiones && p.conexiones.includes(planetaEdit.id))
-                .map(p => {
-                    // Filtramos el ID del planeta destruido para sacarlo de la lista
-                    const nuevasConexiones = p.conexiones.filter(id => id !== planetaEdit.id);
-                    // Actualizamos el planeta vecino en Firebase
-                    return updateDoc(doc(db, "planetas", p.id), { conexiones: nuevasConexiones });
-                });
-
-            // Ejecutamos todas las limpiezas de rutas al mismo tiempo
+                .map(p => updateDoc(doc(db, "planetas", p.id), { conexiones: p.conexiones.filter(id => id !== planetaEdit.id) }));
             await Promise.all(promesasLimpieza);
-
-            // 2. Finalmente, destruimos el planeta original
             await deleteDoc(doc(db, "planetas", planetaEdit.id));
-            
             await recargarTodo();
             onClose();
-        } catch (error) {
-            console.error("Error borrando planeta y sus rutas:", error);
-        }
+        } catch (error) { console.error(error); }
     };
 
     if (!isOpen) return null;
@@ -90,82 +64,43 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
                     {planetaEdit ? 'Ajustar Sistema' : 'Añadir Sistema Estelar'}
                 </h2>
                 
-                <p style={{ color: '#aaa', fontSize: '0.8rem', fontStyle: 'italic', marginBottom: '15px' }}>
-                    Coordenadas Tácticas: [Y: {planetaEdit ? planetaEdit.coords[0] : coords[0]}, X: {planetaEdit ? planetaEdit.coords[1] : coords[1]}]
-                </p>
-
                 <form onSubmit={handleSubmit}>
-                    <div className="grupo-input">
-                        <label>Nombre del Planeta:</label>
-                        <input name="nombre" value={formData.nombre} onChange={handleChange} required autoFocus placeholder="Ej: Moraband" />
-                    </div>
-
+                    <div className="grupo-input"><label>Nombre del Planeta:</label><input name="nombre" value={formData.nombre} onChange={handleChange} required autoFocus /></div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="grupo-input">
-                            <label>Región:</label>
-                            <input name="region" value={formData.region} onChange={handleChange} required placeholder="Ej: Outer Rim" />
-                        </div>
-                        <div className="grupo-input">
-                            <label>Cuadrante:</label>
-                            <input name="cuadrante" value={formData.cuadrante} onChange={handleChange} required placeholder="Ej: R-5" />
-                        </div>
+                        <div className="grupo-input"><label>Región:</label><input name="region" value={formData.region} onChange={handleChange} required /></div>
+                        <div className="grupo-input"><label>Cuadrante:</label><input name="cuadrante" value={formData.cuadrante} onChange={handleChange} required /></div>
                     </div>
 
-                    <div className="grupo-input" style={{ backgroundColor: '#1a1a24', padding: '10px', borderRadius: '4px', borderLeft: formData.tieneRele ? '3px solid #00BCD4' : '3px solid #555', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <input 
-                            type="checkbox" 
-                            name="tieneRele" 
-                            id="tieneRele"
-                            checked={formData.tieneRele} 
-                            onChange={handleChange} 
-                            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                        />
-                        <label htmlFor="tieneRele" style={{ margin: 0, cursor: 'pointer', color: formData.tieneRele ? '#00BCD4' : '#aaa' }}>
-                            {formData.tieneRele ? '🔗 Cuenta con Relé de Masa' : '🛸 Sin Relé (Viaje Lento)'}
-                        </label>
-                    </div>
-
+                    {/* SELECTOR DE INFRAESTRUCTURA (HOSPITALES) */}
                     <div className="grupo-input">
-                        <label>Clasificación Astronómica:</label>
-                        <select name="tipo" value={formData.tipo || 'Planeta'} onChange={handleChange}>
-                            <option value="Planeta">Planeta</option>
-                            <option value="Rele">Relé de Masa (Deep Space)</option>
-                            <option value="Estacion">Estación Espacial</option>
-                            <option value="Luna">Luna</option>
-                            <option value="Asteroide">Cinturón de Asteroides</option>
+                        <label style={{ color: '#4CAF50' }}>Infraestructura Táctica:</label>
+                        <select name="infraestructura" value={formData.infraestructura || 'Ninguna'} onChange={handleChange} style={{ borderColor: '#4CAF50', fontWeight: 'bold' }}>
+                            <option value="Ninguna">Ninguna (Básica)</option>
+                            <option value="Hospital">🏥 Hospital de Campaña (Doble Velocidad Curación)</option>
+                            <option value="Astillero">🛠️ Astillero Naval</option>
+                            <option value="Comercio">🛒 Centro de Comercio</option>
                         </select>
                     </div>
 
-                    <div className="grupo-input">
-                        <label>Archivo de Lore / Descripción:</label>
-                        <textarea 
-                            name="descripcion" 
-                            value={formData.descripcion} 
-                            onChange={handleChange} 
-                            placeholder="Escribe la historia o datos de interés de este sistema..."
-                            style={{ 
-                                width: '100%', 
-                                padding: '8px', 
-                                backgroundColor: '#111', 
-                                color: '#fff', 
-                                border: '1px solid #555', 
-                                borderRadius: '4px',
-                                minHeight: '80px',
-                                resize: 'vertical'
-                            }}
-                        />
+                    <div className="grupo-input" style={{ backgroundColor: '#1a1a24', padding: '10px', borderRadius: '4px', borderLeft: formData.tieneRele ? '3px solid #00BCD4' : '3px solid #555', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input type="checkbox" name="tieneRele" id="tieneRele" checked={formData.tieneRele} onChange={handleChange} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+                        <label htmlFor="tieneRele" style={{ margin: 0, cursor: 'pointer', color: formData.tieneRele ? '#00BCD4' : '#aaa' }}>{formData.tieneRele ? '🔗 Cuenta con Relé de Masa' : '🛸 Sin Relé (Viaje Lento)'}</label>
                     </div>
+                    <div className="grupo-input"><label>Clasificación:</label>
+                        <select name="tipo" value={formData.tipo || 'Planeta'} onChange={handleChange}>
+                            <option value="Planeta">Planeta</option>
+                            <option value="Rele">Relé de Masa</option>
+                            <option value="Estacion">Estación Espacial</option>
+                            <option value="Luna">Luna</option>
+                            <option value="Nebulosa">Nebulosa</option>
+                            <option value="Luna">Asteroide</option>
+                            </select>
+                            </div>
+                    <div className="grupo-input"><label>Lore / Descripción:</label><textarea name="descripcion" value={formData.descripcion} onChange={handleChange} style={{ width: '100%', padding: '8px', backgroundColor: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', minHeight: '80px' }} /></div>
 
                     <div className="botones-modal" style={{ marginTop: '20px', display: 'flex', justifyContent: planetaEdit ? 'space-between' : 'flex-end' }}>
-                        {/* El botón de borrar aparece aquí si estamos en modo edición */}
-                        {planetaEdit && (
-                            <button type="button" className="btn-accion rojo" onClick={handleDelete} style={{ fontWeight: 'bold' }}>
-                                💥 Destruir
-                            </button>
-                        )}
-                        <button type="submit" className="btn-accion" style={{ backgroundColor: planetaEdit ? '#FF9800' : '#00BCD4', color: '#111', fontWeight: 'bold' }}>
-                            {planetaEdit ? 'Guardar Cambios' : 'Registrar Planeta'}
-                        </button>
+                        {planetaEdit && <button type="button" className="btn-accion rojo" onClick={handleDelete}>💥 Destruir</button>}
+                        <button type="submit" className="btn-accion" style={{ backgroundColor: planetaEdit ? '#FF9800' : '#00BCD4', color: '#111', fontWeight: 'bold' }}>{planetaEdit ? 'Guardar Cambios' : 'Registrar'}</button>
                     </div>
                 </form>
             </div>
