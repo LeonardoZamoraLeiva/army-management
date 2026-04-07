@@ -16,7 +16,6 @@ import ModalAAR from './ModalAAR';
 import { getMoralData, calcularTREscuadron } from './Escuadrones';
 import { calcularPlanDeVuelo } from '../utils/navegacion';
 import { calcularDistanciaPitagorica } from '../utils/motorEstelar';
-import { GiCreditsCurrency } from 'react-icons/gi';
 import PanelHolografico from './PanelHolografico';
 
 import RelojETA from './RelojETA';
@@ -41,7 +40,6 @@ export default function MapaEstelar() {
 
     const [vueloDirecto, setVueloDirecto] = useState(null); 
     const [filtroPlanetas, setFiltroPlanetas] = useState('');
-    const [mostrarFiltrosMision, setMostrarFiltrosMision] = useState(false);
     const [filtrosMision, setFiltrosMision] = useState({ rango: '', peligrosidad: '', minRecompensa: '', especial: false });
     
     const [misiones, setMisiones] = useState([]);
@@ -108,7 +106,7 @@ export default function MapaEstelar() {
                 await updateDoc(doc(db, "misiones", m.id), updates);
             }
         }
-        alert(`⏱️ Relatividad ajustada: ${nuevoValor} min/día. Rutas recalculadas sin saltos bruscos.`);
+        alert(`⏱️ Relatividad ajustada: ${nuevoValor} min/día. Rutas recalculadas.`);
     };
 
     const guardarNuevasCoords = async (idPlaneta, latlng) => { await updateDoc(doc(db, "planetas", idPlaneta), { coords: [Math.round(latlng.lat), Math.round(latlng.lng)] }); recargarTodo(); };
@@ -247,7 +245,10 @@ export default function MapaEstelar() {
         const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
         const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
         const creditosEnJuego = Number(mision.recompensa) || 0;
-        const recompensaObtenida = exito ? `${creditosEnJuego} Créditos` : "Ninguna";
+        
+        // 1. RECOMPENSA CON EL NUEVO EMOJI DE CRÉDITOS
+        const recompensaObtenida = exito && creditosEnJuego > 0 ? `🪙 ${creditosEnJuego.toLocaleString('es-CL')} Créditos` : "Ninguna";
+        
         let multDif = 1; const crTarget = Math.round(crFuerzaTotal);
         if (mision.cr_req < crTarget - 0.5) multDif = 0.5; else if (mision.cr_req > crTarget + 0.5) multDif = 1.5;
         const multRango = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.5, 'S': 2.0, 'SS': 5.0 }[mision.rango] || 1;
@@ -265,7 +266,6 @@ export default function MapaEstelar() {
             for (let sId of idsUnicos) {
                 const soldado = soldados.find(s => String(s.id) === String(sId)); if (!soldado) continue;
                 
-                // Mapeo numérico de salud
                 const SALUD_NIVEL = { 'sano': 0, 'leve': 1, 'media': 2, 'grave': 3, 'gravísima': 4, 'muerto': 5 };
                 const SALUD_NOMBRE = ['Sano', 'Leve', 'Media', 'Grave', 'Gravísima', 'Muerto'];
                 
@@ -278,11 +278,10 @@ export default function MapaEstelar() {
                 let txtLogParts = [];
                 let medallas = soldado.medallas ? { ...soldado.medallas } : { 'E': 0, 'D': 0, 'C': 0, 'B': 0, 'A': 0, 'S': 0, 'SS': 0 };
                 
-                // ⏱️ PAUSA DEL RELOJ BIOLÓGICO: Retrocedemos el inicio de curación el mismo tiempo que duró la misión
                 let nuevaFechaEstado = soldado.fecha_estado || Date.now();
                 if (mision.fecha_despliegue && nuevaFechaEstado < mision.fecha_despliegue) {
                     const tiempoAfuera = Date.now() - mision.fecha_despliegue;
-                    nuevaFechaEstado += tiempoAfuera; // Esto "congela" su reloj
+                    nuevaFechaEstado += tiempoAfuera;
                 }
 
                 if (exito) medallas[mision.rango || 'C'] = (Number(medallas[mision.rango || 'C']) || 0) + 1;
@@ -291,54 +290,44 @@ export default function MapaEstelar() {
                 let prevencionHeridas = 0;
                 if (soldado.equipo) { Object.values(soldado.equipo).forEach(itemId => { if(itemId) { const item = equipo.find(e => String(e.id) === String(itemId)); if (item && item.reduccion_dmg) prevencionHeridas += Number(item.reduccion_dmg); } }); }
                 
-                // 🩸 SISTEMA ADITIVO DE DAÑO
+                // 2. ACTUALIZACIÓN DEL MENSAJE DEL AAR (Ahora informa el estado final)
                 if (nivelSalud < 5) {
                     let probHeridaReal = (exito ? dangerStats.win.hit_chance : dangerStats.fail.hit_chance) / poderRatio * Math.max(0.1, (100 - prevencionHeridas) / 100);
                     
                     if ((Math.random() * 100) < probHeridaReal) {
-                        let danioRecibido = 1; 
-                        let gradoDanio = "leves";
-                        
+                        let danioRecibido = 1; let gradoDanio = "leves";
                         if (!exito) {
                             const casc = dangerStats.fail.cascada;
                             if (Math.random() < casc[0]) { 
                                 danioRecibido = 2; gradoDanio = "moderadas"; 
                                 if (Math.random() < casc[1]) { 
                                     danioRecibido = 3; gradoDanio = "graves"; 
-                                    if (Math.random() < casc[2]) { 
-                                        danioRecibido = 4; gradoDanio = "críticas"; 
-                                    } 
+                                    if (Math.random() < casc[2]) { danioRecibido = 4; gradoDanio = "críticas"; } 
                                 } 
                             }
                         }
                         
-                        // Sumamos niveles a la salud existente
                         nivelSalud += danioRecibido;
 
-                        // Lógica de Muerte
                         if (nivelSalud >= 5) {
-                            if (burlos === 0) { 
-                                burlos = 1; nivelSalud = 4; 
-                                txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); 
-                            } else if (burlos === 1) { 
-                                if (Math.random() < 0.8) { 
-                                    burlos = 2; nivelSalud = 4; 
-                                    txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); 
-                                } else { 
-                                    nivelSalud = 5; 
-                                } 
-                            } else { 
-                                nivelSalud = 5; 
-                            }
+                            if (burlos === 0) { burlos = 1; nivelSalud = 4; txtLogParts.push(`💀 ${soldado.nombre} burló la muerte (x1).`); } 
+                            else if (burlos === 1) { 
+                                if (Math.random() < 0.8) { burlos = 2; nivelSalud = 4; txtLogParts.push(`💀 ${soldado.nombre} salvado in-extremis (x2).`); } 
+                                else { nivelSalud = 5; } 
+                            } else { nivelSalud = 5; }
                         }
                         
+                        const estadoFinalStr = SALUD_NOMBRE[Math.min(5, nivelSalud)];
+
                         if (nivelSalud === 5) { 
-                            txtLogParts.push(`✝️ ${soldado.nombre} K.I.A.`); 
+                            txtLogParts.push(`✝️ ${soldado.nombre} K.I.A. (Baja confirmada).`); 
                         } else if (txtLogParts.length === 0) { 
-                            txtLogParts.push(`🩸 ${soldado.nombre} acumuló heridas ${gradoDanio}.`); 
+                            txtLogParts.push(`🩸 ${soldado.nombre} acumuló heridas ${gradoDanio}. Estado actual: ${estadoFinalStr}.`); 
+                        } else {
+                            // Si ya hay un mensaje de burlo de muerte, le añadimos el estado
+                            txtLogParts[0] = `${txtLogParts[0]} Estado actual: ${estadoFinalStr}.`;
                         }
 
-                        // Al recibir una herida nueva, el reloj de curación empieza desde cero
                         nuevaFechaEstado = Date.now();
                     }
                 }
@@ -349,7 +338,7 @@ export default function MapaEstelar() {
                 
                 await updateDoc(doc(db, "soldados", sId), { 
                     estado_salud: estadoSaludFinal, 
-                    fecha_estado: nuevaFechaEstado, // Se guarda el reloj pausado o reseteado
+                    fecha_estado: nuevaFechaEstado,
                     veces_salvado: burlos, xp: newXp, nivel: newLevel, operaciones: (Number(soldado.operaciones || 0) + 1), exitos: (Number(soldado.exitos || 0) + (exito ? 1 : 0)), medallas, puntos_prestigio: Number(soldado.puntos_prestigio || 0) + puntosPrestigioDelta 
                 });
             }
@@ -390,7 +379,6 @@ export default function MapaEstelar() {
     const misionesFiltradas = misiones.filter(m => {
         if (filtrosMision.rango && m.rango !== filtrosMision.rango) return false;
         if (filtrosMision.peligrosidad && m.peligrosidad !== filtrosMision.peligrosidad) return false;
-        if (filtrosMision.especial && !m.recompens_items) return false;
         if (filtrosMision.minRecompensa) { const valorMinimo = parseInt(filtrosMision.minRecompensa) || 0; const valorMision = parseInt((m.recompensa || "0").replace(/\D/g, '')) || 0; if (valorMision < valorMinimo) return false; }
         return true;
     });

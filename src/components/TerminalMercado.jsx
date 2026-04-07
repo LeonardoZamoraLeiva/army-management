@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GiCreditsCurrency, GiShoppingCart } from 'react-icons/gi';
+import {GiShoppingCart } from 'react-icons/gi';
 import { FaCog } from 'react-icons/fa';
 
 const COLOR_RAREZA = {
@@ -53,7 +53,7 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                 {!esGM && (
                     <div style={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
                         {/* FORMATO DE MILES APLICADO */}
-                        <GiCreditsCurrency size="1.2rem"/> {misCreditos.toLocaleString('es-CL')}
+                        🪙 {misCreditos.toLocaleString('es-CL')}
                     </div>
                 )}
             </div>
@@ -91,7 +91,7 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                         <span style={{ color: '#4CAF50', fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             {/* FORMATO DE MILES APLICADO */}
-                                            <GiCreditsCurrency /> {precioItemNum.toLocaleString('es-CL')}
+                                            🪙 {precioItemNum.toLocaleString('es-CL')}
                                         </span>
                                         {esGM && (
                                             <div className="btn-gm-editar" onClick={(e) => { e.stopPropagation(); setEquipoAEditar(item); setIsModalOpen(true); }}>
@@ -128,9 +128,9 @@ export default function TerminalMercado({ filtro, setEquipoAEditar, setIsModalOp
                                                 {esGM ? (
                                                     'VISTA DE ADMINISTRADOR (GM)'
                                                 ) : puedeComprar ? (
-                                                    <>ADQUIRIR POR <GiCreditsCurrency size="1.2rem"/> {precioItemNum.toLocaleString('es-CL')}</>
+                                                    <>Adquirir por 🪙 {precioItemNum.toLocaleString('es-CL')}</>
                                                 ) : (
-                                                    <>FALTAN <GiCreditsCurrency size="1.2rem"/> {(precioItemNum - misCreditos).toLocaleString('es-CL')}</>
+                                                    <>Faltan 🪙 {(precioItemNum - misCreditos).toLocaleString('es-CL')}</>
                                                 )}
                                             </button>
                                         </div>

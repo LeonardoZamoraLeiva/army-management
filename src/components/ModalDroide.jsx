@@ -3,127 +3,126 @@ import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
 
-// DICCIONARIO CENTRAL DE ESPECIALIDADES
+// Los droides usan las habilidades de los soldados porque actúan como especialistas
 const LISTA_ESPECIALIDADES = [
-    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
-    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
-    { grupo: "Combate Especializado (STR/CON)", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas", "Atleta"] },
-    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión", "Engaño", "Gestión", "Apostador"] },
-    { grupo: "Conocimiento (SAB)", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
-    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] },
-    { grupo: "Extras Raros (SOLO GM)", items: ["Nen", "Suerte", "Biótico", "Psíquico", "Cibernético"] }
+    { grupo: "Tecnología y Ciencia", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
+    { grupo: "Infiltración y Subterfugio", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
+    { grupo: "Combate Especializado", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas"] },
+    { grupo: "Conocimiento", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
+    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Piloto", "Xenobiología"] }
 ];
 
+const ROLES_DROIDE = ["Astromecánico (Navegación/Reparación)", "Protocolo (Traducción/Social)", "Médico (Soporte Vital)", "Seguridad/Combate (Asalto)", "Sonda/Slicer (Hackeo/Exploración)"];
+
 export default function ModalDroide({ isOpen, onClose, droideData }) {
-    const { recargarTodo, userRole } = useData();
+    const { recargarTodo, userRole, escuadrones } = useData();
     const esGM = userRole === 'GM';
 
     const estadoInicial = {
-        nombre: '', modelo: '', fabricante: '', rol: 'Astromecánico', req_rango: 1, 
-        hp: 0, ac: 0, vel: 0, sensores: '', herramientas: '', mod_cr: 0, foto: '',
-        habilidad: '', // <--
-        propietario: esGM ? 'Global' : (userRole || 'Global')
+        nombre: '', foto: '', categoria: 'Droide', rol_tactico: ROLES_DROIDE[0], descripcion: '',
+        hardware: 1, software: 1, capacidad_mods: 1, precio: 5000,
+        habilidad: '', propietario: 'Mercado'
     };
-    
+
     const [formData, setFormData] = useState(estadoInicial);
     const [tags, setTags] = useState([]);
 
-    const parseHabilidad = (habStr) => {
-        if (!habStr) return [];
-        const counts = {};
-        habStr.split(',').forEach(t => {
-            const clean = t.trim();
-            if (clean) counts[clean] = (counts[clean] || 0) + 1;
-        });
-        return Object.entries(counts).map(([tag, lvl]) => ({ tag, lvl }));
-    };
-
-    const buildHabilidad = (tagsArr) => {
-        const res = [];
-        tagsArr.forEach(t => { if (t.tag) { for(let i=0; i<Number(t.lvl); i++) res.push(t.tag); } });
-        return res.join(', ');
-    };
-
     useEffect(() => {
-        if (droideData) {
-            setFormData(droideData);
-            setTags(parseHabilidad(droideData.habilidad));
-        } else {
-            setFormData({ ...estadoInicial, propietario: esGM ? 'Global' : (userRole || 'Global') });
-            setTags([]);
+        if (isOpen) {
+            if (droideData && droideData.id) {
+                setFormData(droideData);
+                const tagsArr = [];
+                if (droideData.habilidad) {
+                    droideData.habilidad.split(',').forEach(t => {
+                        const clean = t.trim();
+                        if (clean) {
+                            const match = clean.match(/(.+?)(?:\s+\((\d+)\))?$/);
+                            if (match) tagsArr.push({ tag: match[1].trim(), lvl: match[2] ? Number(match[2]) : 1 });
+                        }
+                    });
+                }
+                setTags(tagsArr);
+            } else {
+                setFormData({ ...estadoInicial, propietario: esGM ? 'Mercado' : userRole });
+                setTags([]);
+            }
         }
-    }, [droideData, isOpen, esGM, userRole]);
+    }, [isOpen, droideData, esGM, userRole]);
 
-    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleChange = (e) => {
+        const { name, value, type } = e.target;
+        setFormData({ ...formData, [name]: type === 'number' ? Number(value) : value });
+    };
+
     const handleAddTag = () => setTags([...tags, { tag: '', lvl: 1 }]);
     const handleUpdateTag = (index, field, value) => { const newTags = [...tags]; newTags[index][field] = value; setTags(newTags); };
     const handleRemoveTag = (index) => setTags(tags.filter((_, i) => i !== index));
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const dataAEnviar = {
-            ...formData,
-            categoria: 'Droide',
-            req_rango: Number(formData.req_rango), hp: Number(formData.hp), ac: Number(formData.ac),
-            vel: Number(formData.vel), mod_cr: Number(formData.mod_cr),
-            habilidad: buildHabilidad(tags)
-        };
-
+        const dataAEnviar = { ...formData, habilidad: tags.map(t => t.lvl > 1 ? `${t.tag} (${t.lvl})` : t.tag).join(', ') };
         try {
-            if (droideData) await updateDoc(doc(db, "vehiculos", droideData.id), dataAEnviar);
+            if (droideData && droideData.id) await updateDoc(doc(db, "vehiculos", droideData.id), dataAEnviar);
             else await addDoc(collection(db, "vehiculos"), dataAEnviar);
             await recargarTodo();
             onClose();
-        } catch (error) { console.error("Error guardando droide:", error); }
+        } catch (error) { console.error(error); }
     };
 
     const handleDelete = async () => {
-        if (!window.confirm(`¿Desmantelar el droide ${formData.nombre}?`)) return;
+        const enUso = escuadrones.some(e => String(e.nave_id) === String(droideData.id));
+        if (enUso) return alert("❌ Este sintético está asignado a un escuadrón. Retíralo primero.");
+        if (!window.confirm(`¿Desmantelar permanentemente la unidad ${formData.nombre}?`)) return;
         try {
             await deleteDoc(doc(db, "vehiculos", droideData.id));
             await recargarTodo();
             onClose();
-        } catch (error) { console.error("Error eliminando:", error); }
+        } catch (error) { console.error(error); }
     };
 
     if (!isOpen) return null;
 
     return (
         <div className="modal" style={{ display: 'flex' }}>
-            <div className="contenido-modal" style={{ borderTop: '4px solid #00BCD4', width: '550px' }}>
+            <div className="contenido-modal datapad-container" style={{ width: '650px', borderTopColor: '#00BCD4', borderColor: '#00BCD4' }}>
                 <span className="btn-cerrar-modal" onClick={onClose}>&times;</span>
-                <h2 style={{ color: '#00BCD4', marginTop: 0, fontFamily: 'monospace', textTransform: 'uppercase' }}>{droideData ? '⚙️ Modificar Droide' : '🤖 Registrar Droide'}</h2>
-                
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="grupo-input"><label>Nombre / Designación</label><input name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>Modelo / Chasis</label><input name="modelo" value={formData.modelo} onChange={handleChange} /></div>
-                        
-                        <div className="grupo-input"><label>Fabricante</label><input name="fabricante" value={formData.fabricante} onChange={handleChange} /></div>
-                        <div className="grupo-input"><label>Rol Principal</label><select name="rol" value={formData.rol} onChange={handleChange}><option>Astromecánico</option><option>Médico</option><option>Protocolo</option><option>Combate</option><option>Espionaje</option><option>Utilidad</option></select></div>
+                <h2 style={{ color: '#00BCD4', marginTop: 0 }}>{droideData?.id ? 'Reprogramar Sintético' : 'Ensamblar Nuevo Droide'}</h2>
 
-                        <div className="grupo-input"><label>HP (Integridad)</label><input type="number" name="hp" value={formData.hp} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>AC (Blindaje)</label><input type="number" name="ac" value={formData.ac} onChange={handleChange} required /></div>
-                        <div className="grupo-input"><label>Velocidad (ft)</label><input type="number" name="vel" value={formData.vel} onChange={handleChange} /></div>
-                        <div className="grupo-input"><label>Rango Requerido</label><select name="req_rango" value={formData.req_rango} onChange={handleChange}><option value="1">I - Recluta</option><option value="2">II - Veterano</option><option value="3">III - Élite</option><option value="4">IV - N7/Comando</option><option value="5">V - Espectro</option></select></div>
-
-                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Sensores y Ópticas</label><input name="sensores" value={formData.sensores} onChange={handleChange} placeholder="Ej: Visión Infrarroja, Radar 50m" /></div>
-                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>Herramientas / Armas</label><input name="herramientas" value={formData.herramientas} onChange={handleChange} placeholder="Ej: Soplete, Interfaz de hackeo" /></div>
-                        
-                        <div className="grupo-input"><label style={{ color: '#FFC107' }}>Propietario / Comandante:</label><select name="propietario" value={formData.propietario || 'Global'} onChange={handleChange} style={{ borderColor: '#FFC107' }} disabled={!esGM}><option value="GM">👑 Cofre del GM (Oculto)</option><option value="Global">🌐 Uso Global (Público)</option><option value="Cazador">🏳️ Cazador</option><option value="Lucian">🏳️ Lucian</option><option value="Brick">🏳️ Brick</option><option value="William">🏳️ William</option><option value="H">🏳️ H</option><option value="Pelonche (E-20)">🏳️ Pelonche</option></select></div>
-                        <div className="grupo-input"><label>Mod. T.R. (+)</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="any" /></div>
-                        <div className="grupo-input" style={{ gridColumn: '1 / -1' }}><label>URL Fotografía</label><input name="foto" value={formData.foto} onChange={handleChange} /></div>
+                <form onSubmit={handleSubmit}>
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                        <div className="grupo-input" style={{ flex: 2 }}><label>Designación (Nombre):</label><input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required /></div>
+                        <div className="grupo-input" style={{ flex: 2 }}><label>Ruta Imagen (/assets/...):</label><input type="text" name="foto" value={formData.foto.replace('/assets/', '')} onChange={(e) => { let val = e.target.value; handleChange({ target: { name: 'foto', value: val ? (val.startsWith('http') ? val : `/assets/${val.replace('/assets/', '')}`) : '' } }); }} /></div>
                     </div>
 
-                    <div style={{ backgroundColor: '#111118', padding: '15px', borderRadius: '5px', border: '1px solid #3f3f5a' }}>
+                    <div className="grupo-input" style={{ marginBottom: '15px' }}>
+                        <label style={{ color: '#00BCD4' }}>Protocolo Principal (Rol):</label>
+                        <select name="rol_tactico" value={formData.rol_tactico} onChange={handleChange} style={{ borderColor: '#00BCD4', fontWeight: 'bold' }}>
+                            {ROLES_DROIDE.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                        <div className="grupo-input"><label style={{ color: '#4CAF50' }}>Nivel de Hardware (Físico):</label><input type="number" name="hardware" value={formData.hardware} onChange={handleChange} min="1" max="10" /></div>
+                        <div className="grupo-input"><label style={{ color: '#9C27B0' }}>Nivel de Software (Lógico):</label><input type="number" name="software" value={formData.software} onChange={handleChange} min="1" max="10" /></div>
+                        <div className="grupo-input"><label style={{ color: '#FF9800' }}>Slots para Módulos (Jax):</label><input type="number" name="capacidad_mods" value={formData.capacidad_mods} onChange={handleChange} min="0" max="6" style={{ borderColor: '#FF9800' }} /></div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                        <div className="grupo-input" style={{ flex: 2 }}><label>Propietario:</label><select name="propietario" value={formData.propietario} onChange={handleChange}><option value="Mercado">🛒 Mercado (A la venta)</option><option value="GM">👑 GM (Oculto)</option></select></div>
+                        <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#4CAF50' }}>Valor (🪙):</label><input type="number" name="precio" value={formData.precio} onChange={handleChange} min="0" step="500" style={{ color: '#4CAF50', fontWeight: 'bold' }} /></div>
+                    </div>
+
+                    <div className="grupo-input"><label>Descripción y Funciones Base:</label><input type="text" name="descripcion" value={formData.descripcion} onChange={handleChange} /></div>
+
+                    <div style={{ backgroundColor: 'rgba(0,188,212,0.1)', padding: '15px', borderRadius: '6px', border: '1px solid rgba(0,188,212,0.3)', marginTop: '15px' }}>
                         <label style={{ color: '#00BCD4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            Programación Táctica (Tags)
-                            <button type="button" onClick={handleAddTag} style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>+ Añadir Protocolo</button>
+                            Programación Específica (Habilidades)
+                            <button type="button" onClick={handleAddTag} style={{ backgroundColor: '#00BCD4', color: '#111', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>+ Añadir Protocolo</button>
                         </label>
-                        {tags.length === 0 && <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic', display: 'block', marginTop: '10px' }}>Este droide no posee protocolos que asistan a la unidad.</span>}
+                        {(!tags || tags.length === 0) && <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic', display: 'block', marginTop: '10px' }}>Sin protocolos especializados.</span>}
                         {tags.map((t, idx) => (
                             <div key={idx} style={{ display: 'flex', gap: '10px', marginTop: '8px', alignItems: 'center' }}>
-                                <select value={t.tag} onChange={(e) => handleUpdateTag(idx, 'tag', e.target.value)} style={{ flex: 2, padding: '6px', backgroundColor: '#000', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}>
+                                <select value={t.tag} onChange={(e) => handleUpdateTag(idx, 'tag', e.target.value)} style={{ flex: 2, padding: '8px', backgroundColor: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}>
                                     <option value="">-- Seleccionar Especialidad --</option>
                                     {LISTA_ESPECIALIDADES.map((cat, i) => (
                                         <optgroup key={i} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item}>{item}</option>)}</optgroup>
@@ -131,16 +130,16 @@ export default function ModalDroide({ isOpen, onClose, droideData }) {
                                 </select>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1 }}>
                                     <span style={{ fontSize: '0.8rem', color: '#aaa' }}>Nivel:</span>
-                                    <input type="number" value={t.lvl} onChange={(e) => handleUpdateTag(idx, 'lvl', e.target.value)} min="1" max="5" style={{ width: '50px', padding: '5px', textAlign: 'center' }} />
+                                    <input type="number" value={t.lvl} onChange={(e) => handleUpdateTag(idx, 'lvl', e.target.value)} min="1" max="5" style={{ width: '50px', padding: '8px', textAlign: 'center' }} />
                                 </div>
-                                <button type="button" onClick={() => handleRemoveTag(idx)} style={{ background: 'none', border: 'none', color: '#F44336', cursor: 'pointer' }}>✖</button>
+                                <button type="button" onClick={() => handleRemoveTag(idx)} style={{ background: 'none', border: 'none', color: '#F44336', cursor: 'pointer', fontSize: '1.2rem' }}>✖</button>
                             </div>
                         ))}
                     </div>
 
-                    <div className="botones-modal" style={{ justifyContent: droideData ? 'space-between' : 'flex-end', marginTop: '15px' }}>
-                        {droideData && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
-                        <button type="submit" className="btn-accion" style={{ backgroundColor: '#00BCD4', color: '#000' }}>Inicializar Droide</button>
+                    <div className="botones-modal" style={{ justifyContent: droideData?.id ? 'space-between' : 'flex-end', marginTop: '20px' }}>
+                        {droideData?.id && <button type="button" className="btn-accion rojo" onClick={handleDelete}>Desmantelar</button>}
+                        <button type="submit" className="btn-accion" style={{ backgroundColor: '#00BCD4', color: '#111', fontWeight: 'bold' }}>Ensamblar Droide</button>
                     </div>
                 </form>
             </div>

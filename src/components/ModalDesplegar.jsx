@@ -28,6 +28,29 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
     const handleDesplegar = async (e) => {
         e.preventDefault();
         try {
+            // --- PARCHE DE SEGURIDAD: TROPAS MUERTAS Y ESCUADRONES VACÍOS ---
+            for (let escId of selectedIds) {
+                const esc = escuadrones.find(x => x.id === escId);
+                if (esc) {
+                    // 1. Verificamos si hay gente adentro
+                    const tropas = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
+                    if (tropas.length === 0) {
+                        return alert(`❌ Operación denegada. El escuadrón [${esc.nombre}] está completamente vacío. Asígnale tropas en los Barracones.`);
+                    }
+
+                    // 2. Verificamos si los que están adentro están vivos
+                    const tropasVivas = tropas.filter(tId => {
+                        const soldado = soldados.find(s => s.id === tId);
+                        return soldado && soldado.estado_salud !== 'Muerto' && soldado.estado_salud !== 'K.I.A.';
+                    });
+                    
+                    if (tropasVivas.length === 0) {
+                        return alert(`❌ Operación denegada. El escuadrón [${esc.nombre}] solo tiene bajas confirmadas (K.I.A.). No hay tropas operativas.`);
+                    }
+                }
+            }
+            // ----------------------------------------------------------------
+            
             const agregados = selectedIds.filter(id => !initialIds.includes(id));
 
             if (agregados.length > 0) {

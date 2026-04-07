@@ -81,10 +81,9 @@ function App() {
                     </div>
                     {miComandante && (
                         <div style={{ backgroundColor: 'rgba(17, 17, 24, 0.8)', border: '1px solid #FFC107', padding: '2px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 0 10px rgba(255, 193, 7, 0.15)' }}>
-                            <GiCreditsCurrency style={{ marginRight: '4px' }} />
-                            <span style={{ color: '#FFC107', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '0.95rem' }}>
-                                {Number(miComandante.creditos || 0).toLocaleString('es-CL')}
-                            </span>
+                          <span style={{ color: '#FFC107', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '0.95rem' }}>
+                              🪙 {Number(miComandante.creditos || 0).toLocaleString('es-CL')}
+                          </span>
                         </div>
                     )}
                 </>

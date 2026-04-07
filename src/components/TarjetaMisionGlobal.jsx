@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { GiCreditsCurrency } from 'react-icons/gi';
 import { formatoTiempo } from '../utils/helpersMapa';
 import { DANGER_TABLE } from '../utils/constantesJuego';
 import { getMoralData, calcularTREscuadron } from './Escuadrones';
@@ -135,7 +134,7 @@ export default function TarjetaMisionGlobal({
                         
                         <div style={{ fontSize: '0.8rem', color: '#ddd', marginTop: '10px', backgroundColor: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '4px' }}>
                             <div style={{ color: '#FFC107', fontWeight: 'bold', marginBottom: '4px' }}>🎁 Recompensas Oficiales:</div>
-                            <div style={{ fontSize: '1rem', color: '#FFC107' }}><GiCreditsCurrency /> {Number(m.recompensa || 0).toLocaleString('es-CL')}</div>
+                            <div style={{ fontSize: '1rem', color: '#FFC107' }}>🪙 {Number(m.recompensa || 0).toLocaleString('es-CL')}</div>
                             <div>⭐ +{m.xp ? Number(m.xp) : (m.cr_req || 1) * 150} XP</div>
                             
                             {(m.recompensa_items && m.recompensa_items.length > 0) && (

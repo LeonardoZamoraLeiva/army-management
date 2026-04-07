@@ -191,8 +191,10 @@ export default function ModalEquipo({ isOpen, onClose, equipoData }) {
                                     <label style={{ color: '#FF9800' }}>Aplicación en Chasis:</label>
                                     <select name="tipo" value={formData.tipo} onChange={handleChange} required style={{ borderColor: '#FF9800' }}>
                                         <optgroup label="Sistemas Fijos (Reemplazo)">
-                                            <option value="casco">🛡️ Casco / Blindaje Base</option>
-                                            <option value="mod_cr">⚔️ Sist. Ofensivos Base</option>
+                                            <option value="casco">🛡️ Casco / Blindaje (Naves/Tanques)</option>
+                                            <option value="mod_cr">⚔️ Sist. Ofensivos (Naves/Tanques)</option>
+                                            <option value="hardware">🤖 Hardware (Solo Droides)</option>
+                                            <option value="software">🧠 Software (Solo Droides)</option>
                                             <option value="motor_subluz">🔥 Motor Subluz Base</option>
                                             <option value="hiperimpulsor">✨ Hiperimpulsor Base</option>
                                         </optgroup>

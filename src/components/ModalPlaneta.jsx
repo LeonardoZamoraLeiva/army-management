@@ -42,6 +42,10 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
     };
 
     const handleDelete = async () => {
+        // --- PARCHE: PLANETA EN USO ---
+        const tropasAqui = escuadrones.some(e => String(e.ubicacion_actual_id) === String(planetaEdit.id) || String(e.ubicacion_destino_id) === String(planetaEdit.id));
+        if (tropasAqui) return alert("❌ Acceso denegado: Hay escuadrones orbitando, aterrizados o en camino a este sistema. Evacúalos antes de destruir el planeta.");
+        // ------------------------------
         if (!window.confirm(`¿Destruir el sistema ${formData.nombre}? ¡Esto borrará las rutas conectadas!`)) return;
         try {
             const promesasLimpieza = planetas

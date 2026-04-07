@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import ModalVehiculo from './ModalVehiculo';
+import ModalDroide from './ModalDroide'; // <-- Añadido
 import { FaCog } from 'react-icons/fa';
 import TallerModular from './TallerModular';
 import { updateDoc, doc } from 'firebase/firestore';
@@ -10,14 +11,21 @@ export default function Hangar() {
     const { vehiculos, userRole, equipo, recargarTodo } = useData();
     const [tabActiva, setTabActiva] = useState('Transporte');
     const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState(null);
+    
+    // Estados para Naves/Asalto
     const [isModalVehiculoOpen, setIsModalVehiculoOpen] = useState(false);
     const [vehiculoAEditar, setVehiculoAEditar] = useState(null);
 
-    const esGM = userRole === 'GM';
+    // Estados para Droides
+    const [isModalDroideOpen, setIsModalDroideOpen] = useState(false);
+    const [droideAEditar, setDroideAEditar] = useState(null);
 
+    // Estado del Menú Desplegable
+    const [menuRegistroAbierto, setMenuRegistroAbierto] = useState(false);
+
+    const esGM = userRole === 'GM';
     const [tallerAbierto, setTallerAbierto] = useState(false);
 
-    // Agrupación y filtrado usando las nuevas nomenclaturas
     const vehiculosFiltrados = vehiculos.filter(v => {
         if (tabActiva === 'Transporte') return v.categoria === 'Nave';
         if (tabActiva === 'Asalto') return v.categoria === 'Terrestre' || v.categoria === 'Vehículo';
@@ -25,56 +33,94 @@ export default function Hangar() {
         return false;
     });
 
-    // Colores temáticos por pestaña
     const getColorTema = () => {
-        if (tabActiva === 'Transporte') return '#9C27B0'; // Púrpura
-        if (tabActiva === 'Asalto') return '#FF9800'; // Naranja
-        if (tabActiva === 'Droides') return '#00BCD4'; // Cyan
+        if (tabActiva === 'Transporte') return '#9C27B0'; 
+        if (tabActiva === 'Asalto') return '#FF9800'; 
+        if (tabActiva === 'Droides') return '#00BCD4'; 
         return '#00BCD4';
     };
 
     const colorTema = getColorTema();
 
-    // Auto-seleccionar el primer vehículo al cambiar de pestaña si no hay ninguno seleccionado
     useEffect(() => {
         if (vehiculosFiltrados.length > 0) {
             setVehiculoSeleccionado(vehiculosFiltrados[0]);
         } else {
             setVehiculoSeleccionado(null);
         }
-    }, [tabActiva]); // Se ejecuta solo cuando cambias de pestaña, no en cada render
+    }, [tabActiva]);
 
+    // Router de Edición: Decide qué modal abrir
     const abrirEdicion = (vehiculo) => {
-        setVehiculoAEditar(vehiculo);
-        setIsModalVehiculoOpen(true);
+        if (vehiculo.categoria === 'Droide') {
+            setDroideAEditar(vehiculo);
+            setIsModalDroideOpen(true);
+        } else {
+            setVehiculoAEditar(vehiculo);
+            setIsModalVehiculoOpen(true);
+        }
     };
 
-// ... tus otros estados y funciones ...
-
-    const abrirNuevo = () => {
-        const catDefecto = tabActiva === 'Transporte' ? 'Nave' : (tabActiva === 'Droides' ? 'Droide' : 'Terrestre');
-        setVehiculoAEditar({ categoria: catDefecto });
-        setIsModalVehiculoOpen(true);
+    // Router de Creación: Viene desde el menú desplegable
+    const abrirNuevo = (categoria) => {
+        setMenuRegistroAbierto(false); // Cierra el menú al seleccionar
+        if (categoria === 'Droide') {
+            setDroideAEditar(null);
+            setIsModalDroideOpen(true);
+        } else {
+            setVehiculoAEditar({ categoria });
+            setIsModalVehiculoOpen(true);
+        }
     };
 
-    // 🔴 LA MAGIA ESTÁ AQUÍ: Si el taller está abierto, renderizamos SOLO el taller y nada del Hangar.
     if (tallerAbierto && vehiculoSeleccionado) {
         return <TallerModular vehiculo={vehiculoSeleccionado} setVehiculo={setVehiculoSeleccionado} onClose={() => setTallerAbierto(false)} />;
     }
-    
+
     return (
-        
         <div style={{ animation: 'fadeIn 0.3s ease', position: 'relative', height: '100%' }}>           
-             {/* CABECERA */}
+            {/* CABECERA */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #3f3f5a', paddingBottom: '15px', marginBottom: '20px' }}>
                 <div>
                     <h2 style={{ margin: 0, color: '#00BCD4', textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 0 10px rgba(0,188,212,0.4)' }}>🛸 Hangar Central</h2>
                     <span style={{ color: '#888', fontSize: '0.85rem', letterSpacing: '1px', textTransform: 'uppercase' }}>Gestión de Activos Motorizados y Sintéticos</span>
                 </div>
+                
+                {/* MENÚ DESPLEGABLE DE REGISTRO */}
                 {esGM && (
-                    <button className="btn-accion" style={{ backgroundColor: colorTema, color: '#111', fontWeight: 'bold' }} onClick={abrirNuevo}>
-                        + Registrar Activo
-                    </button>
+                    <div style={{ position: 'relative' }}>
+                        <button 
+                            className="btn-accion" 
+                            style={{ backgroundColor: colorTema, color: '#111', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }} 
+                            onClick={() => setMenuRegistroAbierto(!menuRegistroAbierto)}
+                        >
+                            + Registrar Activo <span>{menuRegistroAbierto ? '▲' : '▼'}</span>
+                        </button>
+                        
+                        {menuRegistroAbierto && (
+                            <>
+                                {/* Overlay invisible para cerrar al hacer clic fuera */}
+                                <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 99 }} onClick={() => setMenuRegistroAbierto(false)}></div>
+                                
+                                <div style={{ 
+                                    position: 'absolute', top: '100%', right: 0, marginTop: '8px', 
+                                    backgroundColor: '#111', border: '1px solid #333', borderRadius: '6px', 
+                                    overflow: 'hidden', zIndex: 100, display: 'flex', flexDirection: 'column', width: '220px', 
+                                    boxShadow: '0 10px 25px rgba(0,0,0,0.8)' 
+                                }}>
+                                    <button onClick={() => abrirNuevo('Nave')} style={{ padding: '12px', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid #222', color: '#E040FB', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#E040FB22'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                        🚀 Nave Espacial
+                                    </button>
+                                    <button onClick={() => abrirNuevo('Terrestre')} style={{ padding: '12px', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid #222', color: '#FF9800', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#FF980022'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                        🚙 Vehículo de Asalto
+                                    </button>
+                                    <button onClick={() => abrirNuevo('Droide')} style={{ padding: '12px', textAlign: 'left', background: 'transparent', border: 'none', color: '#00BCD4', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = '#00BCD422'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                        🤖 Unidad Sintética
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -144,7 +190,7 @@ export default function Hangar() {
                                         </div>
                                         <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <h4 style={{ margin: '0 0 4px 0', color: esSeleccionado ? colorTema : '#fff', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.nombre}</h4>
-                                            <span style={{ fontSize: '0.75rem', color: '#8892b0', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.modelo || 'Clasificado'}</span>
+                                            <span style={{ fontSize: '0.75rem', color: '#8892b0', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.rol_tactico || v.modelo || 'Clasificado'}</span>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
                                             <span style={{ fontSize: '1.1rem', color: '#4CAF50', fontWeight: 'bold', fontFamily: 'monospace' }}>+{v.mod_cr || 0}</span>
@@ -200,7 +246,7 @@ export default function Hangar() {
                             <div style={{ display: 'flex', gap: '20px', borderBottom: '1px dashed rgba(255,255,255,0.1)', paddingBottom: '20px', marginBottom: '20px', marginTop: '10px' }}>
                                 <img src={vehiculoSeleccionado.foto || 'https://via.placeholder.com/150/111118/666666?text=NO+FOTO'} alt="Nave" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px', border: `2px solid ${colorTema}66`, boxShadow: `0 0 15px ${colorTema}22` }} />
                                 <div style={{ flex: 1, paddingRight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                    <h5 style={{ margin: 0, color: colorTema, textTransform: 'uppercase', letterSpacing: '1px' }}>{vehiculoSeleccionado.modelo || 'Modelo Desconocido'}</h5>
+                                    <h5 style={{ margin: 0, color: colorTema, textTransform: 'uppercase', letterSpacing: '1px' }}>{vehiculoSeleccionado.rol_tactico || vehiculoSeleccionado.modelo || 'Modelo Desconocido'}</h5>
                                     <h2 style={{ margin: '5px 0', color: '#fff', fontSize: '2.2rem', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{vehiculoSeleccionado.nombre}</h2>
                                     <div style={{ marginTop: '5px' }}>
                                         <span style={{ backgroundColor: `${colorTema}22`, color: colorTema, padding: '4px 10px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold', border: `1px solid ${colorTema}44` }}>
@@ -214,16 +260,24 @@ export default function Hangar() {
                             <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px' }}>Especificaciones de Chasis</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
                                 <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>{tabActiva === 'Droides' ? 'Autonomía' : 'Entorno Óptimo'}</span>
-                                    <strong style={{ color: '#fff', fontSize: '1.2rem' }}>{vehiculoSeleccionado.entorno || 'Estándar'}</strong>
+                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>
+                                        {tabActiva === 'Droides' ? 'Nivel Hardware' : (tabActiva === 'Transporte' ? 'Tamaño' : 'Tracción')}
+                                    </span>
+                                    <strong style={{ color: '#fff', fontSize: '1.2rem' }}>
+                                        {tabActiva === 'Droides' ? `Nv. ${vehiculoSeleccionado.hardware || 1}` : (vehiculoSeleccionado.atributo_especial || vehiculoSeleccionado.entorno || 'Estándar')}
+                                    </strong>
                                 </div>
                                 <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,0.1)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
                                     <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>Poder Táctico (TR)</span>
                                     <strong style={{ color: '#4CAF50', fontSize: '1.4rem', textShadow: '0 0 8px rgba(76,175,80,0.4)' }}>+{vehiculoSeleccionado.mod_cr || 0}</strong>
                                 </div>
                                 <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>{tabActiva === 'Transporte' ? 'Clase FTL' : 'Capacidad'}</span>
-                                    <strong style={{ color: '#FFC107', fontSize: '1.2rem' }}>{tabActiva === 'Transporte' ? `${vehiculoSeleccionado.hiperimpulsor || 'N/A'}` : `${vehiculoSeleccionado.pasajeros || 1} Pax`}</strong>
+                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>
+                                        {tabActiva === 'Transporte' ? 'Clase FTL' : (tabActiva === 'Droides' ? 'Nivel Software' : 'Capacidad')}
+                                    </span>
+                                    <strong style={{ color: '#FFC107', fontSize: '1.2rem' }}>
+                                        {tabActiva === 'Transporte' ? `${vehiculoSeleccionado.hiperimpulsor || 'N/A'}` : (tabActiva === 'Droides' ? `Nv. ${vehiculoSeleccionado.software || 1}` : `${vehiculoSeleccionado.pasajeros || 1} Pax`)}
+                                    </strong>
                                 </div>
                             </div>
 
@@ -239,7 +293,7 @@ export default function Hangar() {
                             <div>
                                 <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
                                     <span>Sistemas y Módulos Activos</span>
-                                    <span style={{ color: colorTema, fontSize: '0.7rem', cursor: 'pointer' }}>[ Gestionar en Taller ]</span>
+                                    <span style={{ color: colorTema, fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => setTallerAbierto(true)}>[ Gestionar en Taller ]</span>
                                 </h4>
                                 {vehiculoSeleccionado.habilidad ? (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -260,7 +314,9 @@ export default function Hangar() {
                 </div>
             </div>
 
+            {/* Inyección de Modales separados */}
             <ModalVehiculo isOpen={isModalVehiculoOpen} onClose={() => setIsModalVehiculoOpen(false)} vehiculoData={vehiculoAEditar} />
+            <ModalDroide isOpen={isModalDroideOpen} onClose={() => setIsModalDroideOpen(false)} droideData={droideAEditar} />
         </div>
     );
 }
