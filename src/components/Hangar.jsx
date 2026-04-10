@@ -256,29 +256,42 @@ export default function Hangar() {
                                 </div>
                             </div>
 
-                            {/* Panel de Atributos Base */}
+                            {/* Panel de Atributos Base REDISEÑADO */}
                             <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px' }}>Especificaciones de Chasis</h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>
-                                        {tabActiva === 'Droides' ? 'Nivel Hardware' : (tabActiva === 'Transporte' ? 'Tamaño' : 'Tracción')}
-                                    </span>
-                                    <strong style={{ color: '#fff', fontSize: '1.2rem' }}>
-                                        {tabActiva === 'Droides' ? `Nv. ${vehiculoSeleccionado.hardware || 1}` : (vehiculoSeleccionado.atributo_especial || vehiculoSeleccionado.entorno || 'Estándar')}
-                                    </strong>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
+                                
+                                <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: `2px solid ${colorTema}`, gridColumn: 'span 2' }}>
+                                    <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Rol Táctico</span>
+                                    <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{vehiculoSeleccionado.rol_tactico || 'Clasificado'}</strong>
                                 </div>
-                                <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,0.1)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>Poder Táctico (TR)</span>
-                                    <strong style={{ color: '#4CAF50', fontSize: '1.4rem', textShadow: '0 0 8px rgba(76,175,80,0.4)' }}>+{vehiculoSeleccionado.mod_cr || 0}</strong>
+                                
+                                <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: `2px solid ${colorTema}`, gridColumn: 'span 2' }}>
+                                    <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>{tabActiva === 'Droides' ? 'Hardware / Software' : (tabActiva === 'Transporte' ? 'Tamaño Físico' : 'Locomoción')}</span>
+                                    <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{tabActiva === 'Droides' ? `Hw: ${vehiculoSeleccionado.hardware || 1} | Sw: ${vehiculoSeleccionado.software || 1}` : (vehiculoSeleccionado.atributo_especial || 'Estándar')}</strong>
                                 </div>
-                                <div style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>
-                                        {tabActiva === 'Transporte' ? 'Clase FTL' : (tabActiva === 'Droides' ? 'Nivel Software' : 'Capacidad')}
-                                    </span>
-                                    <strong style={{ color: '#FFC107', fontSize: '1.2rem' }}>
-                                        {tabActiva === 'Transporte' ? `${vehiculoSeleccionado.hiperimpulsor || 'N/A'}` : (tabActiva === 'Droides' ? `Nv. ${vehiculoSeleccionado.software || 1}` : `${vehiculoSeleccionado.pasajeros || 1} Pax`)}
-                                    </strong>
+
+                                <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: '2px solid #4CAF50', gridColumn: 'span 2' }}>
+                                    <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Blindaje (Casco)</span>
+                                    <strong style={{ color: '#4CAF50', fontSize: '1.1rem' }}>Nivel {vehiculoSeleccionado.casco || 1} <span style={{fontSize:'0.75rem', color:'#aaa'}}>({vehiculoSeleccionado.casco || 0}% Prev.)</span></strong>
                                 </div>
+
+                                <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: '2px solid #F44336', gridColumn: 'span 2' }}>
+                                    <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Armamento (Ofensiva)</span>
+                                    <strong style={{ color: '#F44336', fontSize: '1.1rem' }}>+{vehiculoSeleccionado.mod_cr || 0} TR</strong>
+                                </div>
+
+                                {tabActiva === 'Transporte' && (
+                                    <>
+                                        <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: '2px solid #00BCD4', gridColumn: 'span 2' }}>
+                                            <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Motor SubLuz</span>
+                                            <strong style={{ color: '#00BCD4', fontSize: '1.1rem' }}>Clase {vehiculoSeleccionado.motor_subluz || 1}</strong>
+                                        </div>
+                                        <div style={{ textAlign: 'center', padding: '8px', backgroundColor: '#111', borderRadius: '6px', borderBottom: '2px solid #FFC107', gridColumn: 'span 2' }}>
+                                            <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Hyperdrive </span>
+                                            <strong style={{ color: '#FFC107', fontSize: '1.1rem' }}>Clase {vehiculoSeleccionado.hiperimpulsor || 2}</strong>
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
                             {/* Lore / Descripción */}

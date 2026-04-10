@@ -2,20 +2,10 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
-
-// Los droides usan las habilidades de los soldados porque actúan como especialistas
-const LISTA_ESPECIALIDADES = [
-    { grupo: "Tecnología y Ciencia", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
-    { grupo: "Infiltración y Subterfugio", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
-    { grupo: "Combate Especializado", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas"] },
-    { grupo: "Conocimiento", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
-    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Piloto", "Xenobiología"] }
-];
-
-const ROLES_DROIDE = ["Astromecánico (Navegación/Reparación)", "Protocolo (Traducción/Social)", "Médico (Soporte Vital)", "Seguridad/Combate (Asalto)", "Sonda/Slicer (Hackeo/Exploración)"];
+import { TAGS_DROIDE, ROLES_DROIDE } from '../utils/listasJuego'
 
 export default function ModalDroide({ isOpen, onClose, droideData }) {
-    const { recargarTodo, userRole, escuadrones } = useData();
+    const { recargarTodo, userRole, escuadrones, comandantes } = useData();
     const esGM = userRole === 'GM';
 
     const estadoInicial = {
@@ -108,7 +98,17 @@ export default function ModalDroide({ isOpen, onClose, droideData }) {
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                        <div className="grupo-input" style={{ flex: 2 }}><label>Propietario:</label><select name="propietario" value={formData.propietario} onChange={handleChange}><option value="Mercado">🛒 Mercado (A la venta)</option><option value="GM">👑 GM (Oculto)</option></select></div>
+                        <div className="grupo-input" style={{ flex: 2 }}><label>Propietario:</label>
+                            <select name="propietario" value={formData.propietario} onChange={handleChange}>
+                                <option value="Mercado">🛒 Mercado (A la venta)</option>
+                                <option value="GM">👑 GM (Oculto)</option>
+                                <option value="Global">🌐 Público / Global</option>
+                                {comandantes && comandantes.map(c => (
+                                    <option key={c.id} value={c.nombre}>🏳️ {c.nombre}</option>
+                                ))}
+                            </select>                        
+                        </div>
+                        
                         <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#4CAF50' }}>Valor (🪙):</label><input type="number" name="precio" value={formData.precio} onChange={handleChange} min="0" step="500" style={{ color: '#4CAF50', fontWeight: 'bold' }} /></div>
                     </div>
 
@@ -124,7 +124,7 @@ export default function ModalDroide({ isOpen, onClose, droideData }) {
                             <div key={idx} style={{ display: 'flex', gap: '10px', marginTop: '8px', alignItems: 'center' }}>
                                 <select value={t.tag} onChange={(e) => handleUpdateTag(idx, 'tag', e.target.value)} style={{ flex: 2, padding: '8px', backgroundColor: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}>
                                     <option value="">-- Seleccionar Especialidad --</option>
-                                    {LISTA_ESPECIALIDADES.map((cat, i) => (
+                                    {TAGS_DROIDE.map((cat, i) => (
                                         <optgroup key={i} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item}>{item}</option>)}</optgroup>
                                     ))}
                                 </select>

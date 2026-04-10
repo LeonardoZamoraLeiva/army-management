@@ -77,6 +77,27 @@ export default function TarjetaMisionGlobal({
 
     const handleToggle = (e) => { e.stopPropagation(); setMisionExpandida(isExpanded ? null : m.id); };
 
+// --- NUEVO: CÁLCULO DE EXPERIENCIA (D&D 5E DIVIDIDO) ---
+    const multiXP = { 'E': 0.7, 'D': 0.8, 'C': 0.9, 'B': 1.0, 'A': 1.1, 'S': 1.2, 'SS': 1.5 };
+    const multiplicadorRango = multiXP[m.rango] || 1.0;
+    
+    // XP Base (Lo que puso el GM, o auto-calculado por CR * 150)
+    const xpBaseMision = m.xp ? Number(m.xp) : (m.cr_req || 1) * 150; 
+    const xpTotalModificada = Math.round(xpBaseMision * multiplicadorRango);
+
+    // Contamos cuántos soldados en total fueron a la misión
+    let cantSoldadosEnMision = 1;
+    if (escuadronesAsignados.length > 0) {
+        let conteo = 0;
+        escuadronesAsignados.forEach(esc => {
+            conteo += [esc.lider_id, ...(esc.miembros || [])].filter(Boolean).length;
+        });
+        if (conteo > 0) cantSoldadosEnMision = conteo;
+    }
+    const xpPorSoldado = Math.round(xpTotalModificada / cantSoldadosEnMision);
+    // -------------------------------------------------------
+
+
     return (
         <div 
             style={{ position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: isExpanded ? 'rgba(26, 26, 36, 0.9)' : 'rgba(26, 26, 46, 0.6)', padding: '12px', borderRadius: '6px', marginBottom: '12px', borderTop: isExpanded ? `4px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : '#00BCD4')}` : 'none', borderLeft: isExpanded ? 'none' : `4px solid ${estaDesplegada ? '#F44336' : '#FFC107'}`, cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }} 
@@ -115,10 +136,22 @@ export default function TarjetaMisionGlobal({
                                         const renders = [];
                                         reqsOtros.forEach(req => {
                                             if (req.tipo === 'soldados') renders.push(<div key={req.id}>👥 Operativos: Min {req.min} / Max {req.max}</div>);
-                                            if (req.tipo === 'droide') renders.push(<div key={req.id}>🤖 Droide Táctico: {req.rol ? `Clase ${req.rol}` : 'Cualquier modelo'}</div>);
+                                            
+                                            if (req.tipo === 'droide') {
+                                                renders.push(<div key={req.id}>🤖 Droide Táctico: {req.rol ? `Clase ${req.rol}` : 'Cualquier modelo'}</div>);
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>🧠 Protocolo Req: {p.nombre} (Nv.{p.nivel})</div>); });
+                                            }
+                                            
                                             if (req.tipo === 'nave') {
-                                                const detalles = [req.motor_subluz ? `Motor Subluz Lvl ${req.motor_subluz}+` : '', req.hiperimpulsor ? `Hiperimpulsor C-${req.hiperimpulsor} o inf.` : '', req.entorno ? `Chasis ${req.entorno}` : '', req.rol ? `Rol de ${req.rol}` : ''].filter(Boolean).join(' | ');
+                                                const detalles = [req.motor_subluz ? `Subluz Nv.${req.motor_subluz}+` : '', req.hiperimpulsor ? `Hyperdrive C-${req.hiperimpulsor} o inf.` : '', req.atributo_especial ? `Tamaño: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
                                                 renders.push(<div key={req.id}>🚀 Vehículo: {detalles || 'Cualquier nave'}</div>);
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} (Nv.{p.nivel})</div>); });
+                                            }
+
+                                            if (req.tipo === 'asalto') {
+                                                const detalles = [req.motor_subluz ? `Subluz Nv.${req.motor_subluz}+` : '', req.atributo_especial ? `Tracción: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
+                                                renders.push(<div key={req.id}>🚙 Asalto: {detalles || 'Cualquier vehículo'}</div>);
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} (Nv.{p.nivel})</div>); });
                                             }
                                         });
                                         if (reqsEsp.length > 0) {
@@ -135,7 +168,13 @@ export default function TarjetaMisionGlobal({
                         <div style={{ fontSize: '0.8rem', color: '#ddd', marginTop: '10px', backgroundColor: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '4px' }}>
                             <div style={{ color: '#FFC107', fontWeight: 'bold', marginBottom: '4px' }}>🎁 Recompensas Oficiales:</div>
                             <div style={{ fontSize: '1rem', color: '#FFC107' }}>🪙 {Number(m.recompensa || 0).toLocaleString('es-CL')}</div>
-                            <div>⭐ +{m.xp ? Number(m.xp) : (m.cr_req || 1) * 150} XP</div>
+                            {/* Reemplaza la línea de XP antigua por esta nueva: */}
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                <span>⭐ +{xpTotalModificada.toLocaleString('es-CL')} XP Total</span>
+                                {cantSoldadosEnMision > 1 && estaDesplegada && (
+                                    <span style={{ fontSize: '0.75rem', color: '#aaa' }}>({xpPorSoldado} c/u)</span>
+                                )}
+                            </div>
                             
                             {(m.recompensa_items && m.recompensa_items.length > 0) && (
                                 <div style={{ color: '#00BCD4', fontWeight: 'bold', marginTop: '6px', borderTop: '1px dashed #555', paddingTop: '4px' }}>

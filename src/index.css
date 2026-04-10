@@ -911,3 +911,75 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
     animation: pulseWarning 0.8s infinite alternate; 
     stroke: #FFC107; 
 }
+
+
+/* =========================================
+   MENÚ RADIAL DINÁMICO (APP)
+   ========================================= */
+.radial-menu-container { 
+    position: fixed; 
+    top: 15px; left: 15px; 
+    z-index: 9999; 
+}
+/* NUEVO: Aumentamos el tamaño de la caja al abrir para que no pierda el hover */
+.radial-menu-container.open {
+    width: 180px; 
+    height: 180px;
+}
+.radial-main-btn {
+    width: 55px; height: 55px; border-radius: 50%;
+    background-color: #00BCD4; color: #111; border: none; font-size: 1.5rem;
+    cursor: pointer; display: flex; justify-content: center; align-items: center;
+    box-shadow: 0 4px 15px rgba(0, 188, 212, 0.4);
+    position: relative; z-index: 100; transition: transform 0.3s ease, background-color 0.3s;
+}
+.radial-main-btn.open { transform: rotate(90deg); background-color: #4CAF50; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4); }
+
+.radial-item {
+    position: absolute; top: 2px; left: 2px; width: 50px; height: 50px;
+    border-radius: 50%; background-color: #1a1a24; color: #fff; border: 2px solid #3f3f5a;
+    display: flex; justify-content: center; align-items: center; font-size: 1.3rem;
+    cursor: pointer; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+    opacity: 0; z-index: 90; transform: translate(0, 0) scale(0.5); pointer-events: none;
+}
+/* Efecto hover sobre el botón flotante: sobreescribe el transform preservando la posición radial */
+.radial-item:hover { 
+    border-color: #00BCD4; 
+    color: #00BCD4; 
+    box-shadow: 0 0 10px rgba(0, 188, 212, 0.5); 
+    z-index: 110; 
+}
+.radial-item.activo { background-color: #4CAF50; border-color: #4CAF50; color: #fff; }
+
+.radial-items-wrapper.open .radial-item { opacity: 1; pointer-events: auto; }
+/* Despliegue en abanico (cuarto de circulo invertido) Radio ~ 110px */
+.radial-items-wrapper.open .item-1 { transform: translate(110px, 0px) scale(1); transition-delay: 0.05s; }
+.radial-items-wrapper.open .item-2 { transform: translate(102px, 42px) scale(1); transition-delay: 0.1s; }
+.radial-items-wrapper.open .item-3 { transform: translate(78px, 78px) scale(1); transition-delay: 0.15s; }
+.radial-items-wrapper.open .item-4 { transform: translate(42px, 102px) scale(1); transition-delay: 0.2s; }
+.radial-items-wrapper.open .item-5 { transform: translate(0px, 110px) scale(1); transition-delay: 0.25s; }
+
+.radial-tooltip {
+    position: absolute; 
+    top: 50%; 
+    left: 65px; 
+    transform: translate(-10px, -50%); /* Lo empezamos ligeramente a la izq para animarlo */
+    background: #000; 
+    color: #fff; 
+    padding: 6px 12px; 
+    border-radius: 4px;
+    font-size: 0.75rem; 
+    font-family: monospace; 
+    white-space: nowrap;
+    opacity: 0; 
+    pointer-events: none; 
+    transition: opacity 0.2s ease, transform 0.2s ease; /* Transición fluida */
+    border: 1px solid #333; 
+    z-index: 105;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+}
+.radial-item:hover .radial-tooltip { 
+    opacity: 1; 
+    pointer-events: auto; 
+    transform: translate(0, -50%); 
+}

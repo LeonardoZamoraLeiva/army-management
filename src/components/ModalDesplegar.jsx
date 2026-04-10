@@ -4,6 +4,115 @@ import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
 import { calcularTREscuadron } from './Escuadrones'; 
 
+
+// --- FUNCIÓN NÚCLEO: ANALIZADOR TÁCTICO (SISTEMA DE POOL/ECS) ---
+// Extraemos la lógica para que MapaEstelar también pueda usarla
+export const evaluarRequisitos = (esc, mision, soldados, vehiculos, equipo) => {
+    const fallos = [];
+    const reqs = mision.requisitos_tecnicos || [];
+    if (reqs.length === 0) return { apto: true, fallos };
+
+    const miembrosIds = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
+    
+    const squadPool = {
+        efectivos: miembrosIds.length,
+        tiene_nave: false, tiene_droide: false, tiene_asalto: false,
+        motor_subluz: 0, motor_subluz_asalto: 0, hiperimpulsor: 99,
+        atributos_especiales: [], // Aquí caen tamaños de nave y tipos de tracción
+        roles: [], 
+        perks: {} 
+    };
+
+    const addPerk = (habString) => {
+        if (!habString) return;
+        habString.split(',').forEach(t => {
+            const match = t.trim().match(/(.+?)(?:\s+\((\d+)\))?$/);
+            if (match) {
+                const nombre = match[1].trim();
+                const nivel = match[2] ? Number(match[2]) : 1;
+                if (!squadPool.perks[nombre] || squadPool.perks[nombre] < nivel) squadPool.perks[nombre] = nivel;
+            }
+        });
+    };
+
+    miembrosIds.forEach(id => {
+        const s = soldados.find(sol => String(sol.id) === String(id));
+        if (!s) return;
+        (s.especialidades || []).forEach(addPerk);
+        if (s.equipo) Object.values(s.equipo).forEach(eqId => {
+            const itm = equipo.find(e => String(e.id) === String(eqId));
+            if (itm && itm.habilidad) addPerk(itm.habilidad);
+        });
+    });
+
+    const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
+    if (nave) {
+        squadPool.tiene_nave = true;
+        squadPool.motor_subluz = Math.max(squadPool.motor_subluz, Number(nave.motor_subluz) || 0);
+        squadPool.hiperimpulsor = Math.min(squadPool.hiperimpulsor, Number(nave.hiperimpulsor) || 99);
+        if (nave.atributo_especial) squadPool.atributos_especiales.push(nave.atributo_especial);
+        if (nave.rol_tactico || nave.clase) squadPool.roles.push(nave.rol_tactico || nave.clase);
+        if (nave.habilidad) addPerk(nave.habilidad);
+    }
+
+    const droide = vehiculos.find(v => String(v.id) === String(esc.droide_id));
+    if (droide) {
+        squadPool.tiene_droide = true;
+        if (droide.rol_tactico || droide.clase) squadPool.roles.push(droide.rol_tactico || droide.clase);
+        if (droide.habilidad) addPerk(droide.habilidad);
+    }
+
+    const asalto = vehiculos.find(v => String(v.id) === String(esc.vehiculo_id));
+    if (asalto) {
+        squadPool.tiene_asalto = true;
+        squadPool.motor_subluz_asalto = Math.max(squadPool.motor_subluz_asalto, Number(asalto.motor_subluz) || 0);
+        if (asalto.atributo_especial) squadPool.atributos_especiales.push(asalto.atributo_especial);
+        if (asalto.rol_tactico || asalto.clase) squadPool.roles.push(asalto.rol_tactico || asalto.clase);
+        if (asalto.habilidad) addPerk(asalto.habilidad);
+    }
+
+    reqs.forEach(req => {
+        if (req.tipo === 'soldados') {
+            if (squadPool.efectivos < req.min) fallos.push(`Requiere mín. ${req.min} operativos (Tiene ${squadPool.efectivos}).`);
+            if (squadPool.efectivos > req.max) fallos.push(`Supera máx. de ${req.max} operativos (Tiene ${squadPool.efectivos}).`);
+        }
+        
+        if (req.tipo === 'nave') {
+            if (!squadPool.tiene_nave) fallos.push("Requiere Nave Espacial.");
+            else {
+                if (req.motor_subluz && squadPool.motor_subluz < Number(req.motor_subluz)) fallos.push(`Subluz insuficiente (Nave: Nv.${squadPool.motor_subluz}, Req: ${req.motor_subluz}+).`);
+                if (req.hiperimpulsor && squadPool.hiperimpulsor > Number(req.hiperimpulsor)) fallos.push(`Hyperdrive lento (Nave: Cls-${squadPool.hiperimpulsor}, Req: Cls-${req.hiperimpulsor} o inf).`);
+                if (req.atributo_especial && !squadPool.atributos_especiales.includes(req.atributo_especial)) fallos.push(`Falta tamaño apto: ${req.atributo_especial}.`);
+                if (req.rol && !squadPool.roles.includes(req.rol)) fallos.push(`Falta rol de nave: ${req.rol}.`);
+                if (req.perks) req.perks.forEach(p => { if (p.nombre && (squadPool.perks[p.nombre] || 0) < p.nivel) fallos.push(`Falta módulo en escuadrón: [${p.nombre}] Nv.${p.nivel}.`); });
+            }
+        }
+
+        if (req.tipo === 'asalto') {
+            if (!squadPool.tiene_asalto) fallos.push("Requiere Vehículo de Asalto.");
+            else {
+                if (req.motor_subluz && squadPool.motor_subluz_asalto < Number(req.motor_subluz)) fallos.push(`Subluz insuficiente (Asalto: Nv.${squadPool.motor_subluz_asalto}, Req: ${req.motor_subluz}+).`);
+                if (req.atributo_especial && !squadPool.atributos_especiales.includes(req.atributo_especial)) fallos.push(`Falta tracción apta: ${req.atributo_especial}.`);
+                if (req.rol && !squadPool.roles.includes(req.rol)) fallos.push(`Falta rol táctico: ${req.rol}.`);
+                if (req.perks) req.perks.forEach(p => { if (p.nombre && (squadPool.perks[p.nombre] || 0) < p.nivel) fallos.push(`Falta módulo asalto: [${p.nombre}] Nv.${p.nivel}.`); });
+            }
+        }
+
+        if (req.tipo === 'droide') {
+            if (!squadPool.tiene_droide) fallos.push("Requiere Droide Táctico.");
+            else if (req.rol && !squadPool.roles.includes(req.rol)) fallos.push(`Falta protocolo de droide: ${req.rol}.`);
+            if (req.perks) req.perks.forEach(p => { if (p.nombre && (squadPool.perks[p.nombre] || 0) < p.nivel) fallos.push(`Falta protocolo: [${p.nombre}] Nv.${p.nivel}.`); });
+        }
+
+        if (req.tipo === 'especialidad') {
+            const nivelActual = squadPool.perks[req.nombre] || 0;
+            if (nivelActual < req.nivel) fallos.push(`Falta [${req.nombre}] Nv.${req.nivel} (Pool: Nv.${nivelActual}).`);
+        }
+    });
+
+    return { apto: fallos.length === 0, fallos };
+};
+
 export default function ModalDesplegar({ isOpen, onClose, mision }) {
     const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
     const [selectedIds, setSelectedIds] = useState([]);
@@ -80,71 +189,71 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
 
     // --- FUNCIÓN NÚCLEO: ANALIZADOR TÁCTICO ---
     // Evalúa si un escuadrón cumple con todos los requisitos de la misión
-    const evaluarRequisitos = (esc) => {
-        const fallos = [];
-        const reqs = mision.requisitos_tecnicos || [];
-        if (reqs.length === 0) return { apto: true, fallos };
+    // const evaluarRequisitos = (esc) => {
+    //     const fallos = [];
+    //     const reqs = mision.requisitos_tecnicos || [];
+    //     if (reqs.length === 0) return { apto: true, fallos };
 
-        // 1. Extraer datos vitales del escuadrón
-        const miembrosIds = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
-        const cantSoldados = miembrosIds.length;
+    //     // 1. Extraer datos vitales del escuadrón
+    //     const miembrosIds = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean);
+    //     const cantSoldados = miembrosIds.length;
         
-        const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
-        const droide = vehiculos.find(v => String(v.id) === String(esc.droide_id));
+    //     const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
+    //     const droide = vehiculos.find(v => String(v.id) === String(esc.droide_id));
 
-        // Recopilar todas las especialidades (Innatas + Equipo) del escuadrón completo
-        const especialidadesTotales = {};
-        miembrosIds.forEach(sId => {
-            const s = soldados.find(sol => String(sol.id) === String(sId));
-            if (!s) return;
+    //     // Recopilar todas las especialidades (Innatas + Equipo) del escuadrón completo
+    //     const especialidadesTotales = {};
+    //     miembrosIds.forEach(sId => {
+    //         const s = soldados.find(sol => String(sol.id) === String(sId));
+    //         if (!s) return;
             
-            // Innatas
-            (s.especialidades || []).forEach(esp => {
-                if (esp && esp.trim() !== '') {
-                    especialidadesTotales[esp] = (especialidadesTotales[esp] || 0) + 1;
-                }
-            });
-            // Adquiridas (Equipo)
-            if (s.equipo) {
-                Object.values(s.equipo).forEach(eqId => {
-                    const item = equipo.find(eq => String(eq.id) === String(eqId));
-                    if (item && item.habilidad) {
-                        especialidadesTotales[item.habilidad] = (especialidadesTotales[item.habilidad] || 0) + 1;
-                    }
-                });
-            }
-        });
+    //         // Innatas
+    //         (s.especialidades || []).forEach(esp => {
+    //             if (esp && esp.trim() !== '') {
+    //                 especialidadesTotales[esp] = (especialidadesTotales[esp] || 0) + 1;
+    //             }
+    //         });
+    //         // Adquiridas (Equipo)
+    //         if (s.equipo) {
+    //             Object.values(s.equipo).forEach(eqId => {
+    //                 const item = equipo.find(eq => String(eq.id) === String(eqId));
+    //                 if (item && item.habilidad) {
+    //                     especialidadesTotales[item.habilidad] = (especialidadesTotales[item.habilidad] || 0) + 1;
+    //                 }
+    //             });
+    //         }
+    //     });
 
-        // 2. Comprobar contra los requisitos
-        reqs.forEach(req => {
-            if (req.tipo === 'soldados') {
-                if (cantSoldados < req.min) fallos.push(`Requiere mínimo ${req.min} soldados (Tiene ${cantSoldados}).`);
-                if (cantSoldados > req.max) fallos.push(`Supera límite de ${req.max} soldados (Tiene ${cantSoldados}).`);
-            }
+    //     // 2. Comprobar contra los requisitos
+    //     reqs.forEach(req => {
+    //         if (req.tipo === 'soldados') {
+    //             if (cantSoldados < req.min) fallos.push(`Requiere mínimo ${req.min} soldados (Tiene ${cantSoldados}).`);
+    //             if (cantSoldados > req.max) fallos.push(`Supera límite de ${req.max} soldados (Tiene ${cantSoldados}).`);
+    //         }
             
-            if (req.tipo === 'droide') {
-                if (!droide) fallos.push("Requiere un Droide Táctico asignado al escuadrón.");
-                else if (req.rol && droide.clase !== req.rol) fallos.push(`El droide debe ser clase ${req.rol}.`);
-            }
+    //         if (req.tipo === 'droide') {
+    //             if (!droide) fallos.push("Requiere un Droide Táctico asignado al escuadrón.");
+    //             else if (req.rol && droide.clase !== req.rol) fallos.push(`El droide debe ser clase ${req.rol}.`);
+    //         }
 
-            if (req.tipo === 'nave') {
-                if (!nave) fallos.push("Requiere una Nave Espacial asignada.");
-                else {
-                    if (req.motor_subluz && (Number(nave.motor_subluz) || 0) < Number(req.motor_subluz)) fallos.push(`Nave requiere Motor Subluz Lvl ${req.motor_subluz}+.`);
-                    if (req.hiperimpulsor && (Number(nave.hiperimpulsor) || 99) > Number(req.hiperimpulsor)) fallos.push(`Nave requiere Hiperimpulsor C-${req.hiperimpulsor} o inferior.`);
-                    if (req.entorno && nave.entorno !== req.entorno) fallos.push(`El chasis de la nave debe ser apto para entorno ${req.entorno}.`);
-                    if (req.rol && nave.clase !== req.rol) fallos.push(`La nave debe cumplir el rol de ${req.rol}.`);
-                }
-            }
+    //         if (req.tipo === 'nave') {
+    //             if (!nave) fallos.push("Requiere una Nave Espacial asignada.");
+    //             else {
+    //                 if (req.motor_subluz && (Number(nave.motor_subluz) || 0) < Number(req.motor_subluz)) fallos.push(`Nave requiere Motor Subluz Lvl ${req.motor_subluz}+.`);
+    //                 if (req.hiperimpulsor && (Number(nave.hiperimpulsor) || 99) > Number(req.hiperimpulsor)) fallos.push(`Nave requiere Hiperimpulsor C-${req.hiperimpulsor} o inferior.`);
+    //                 if (req.entorno && nave.entorno !== req.entorno) fallos.push(`El chasis de la nave debe ser apto para entorno ${req.entorno}.`);
+    //                 if (req.rol && nave.clase !== req.rol) fallos.push(`La nave debe cumplir el rol de ${req.rol}.`);
+    //             }
+    //         }
 
-            if (req.tipo === 'especialidad') {
-                const nivelActual = especialidadesTotales[req.nombre] || 0;
-                if (nivelActual < req.nivel) fallos.push(`Carece de especialista en ${req.nombre} Lvl ${req.nivel} (Actual: ${nivelActual}).`);
-            }
-        });
+    //         if (req.tipo === 'especialidad') {
+    //             const nivelActual = especialidadesTotales[req.nombre] || 0;
+    //             if (nivelActual < req.nivel) fallos.push(`Carece de especialista en ${req.nombre} Lvl ${req.nivel} (Actual: ${nivelActual}).`);
+    //         }
+    //     });
 
-        return { apto: fallos.length === 0, fallos };
-    };
+    //     return { apto: fallos.length === 0, fallos };
+    // };
     // ------------------------------------------
 
     const escuadronesAgrupados = escuadrones.reduce((acc, esc) => {
@@ -177,8 +286,7 @@ export default function ModalDesplegar({ isOpen, onClose, mision }) {
                                             const esMio = esGM || faccion === userRole;
                                             
                                             // Evaluamos los requisitos
-                                            const evaluacion = evaluarRequisitos(esc);
-                                            
+                                            const evaluacion = evaluarRequisitos(esc, mision, soldados, vehiculos, equipo);                                            
                                             // Bloqueo total
                                             const disabledGeneral = isOcupadoEnOtra || !esMio || !evaluacion.apto;
                                             

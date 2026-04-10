@@ -8,15 +8,10 @@ import ModalVehiculo from './ModalVehiculo';
 import ModalDroide from './ModalDroide';
 import ModalSoldado from './ModalSoldado';
 
-const LISTA_ESPECIALIDADES = [
-    { grupo: "Tecnología y Ciencia (INT)", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
-    { grupo: "Infiltración y Subterfugio (DEX)", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
-    { grupo: "Combate Especializado (STR/CON)", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas", "Atleta"] },
-    { grupo: "Social y Mando (CHA)", items: ["Liderazgo", "Intimidación", "Persuasión", "Engaño", "Gestión", "Apostador"] },
-    { grupo: "Conocimiento (SAB)", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
-    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] },
-    { grupo: "Extras Raros (SOLO GM)", items: ["Nen", "Suerte", "Biótico", "Psíquico", "Cibernético"] }
-];
+import { TAGS_PERSONAJES, TAGS_DROIDE, TAGS_VEHICULOS, ROLES_NAVE, TAMAÑOS_NAVE, ROLES_ASALTO, TRACCION_ASALTO, ROLES_DROIDE } from '../utils/listasJuego';
+
+
+
 
 const DEFAULT_EQUIPO = { propietario: 'GM', esNuevo: true };
 const DEFAULT_VEHICULO = { propietario: 'GM', esNuevo: true };
@@ -30,28 +25,32 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
         titulo: '', ubicacion_id: '', contratista_select: 'Gremio Aureus', contratista_custom: '',
         descripcion: '', 
         requisitos_tecnicos: [], 
-        rango: 'C', peligrosidad: 'Media', horas_limite: 48,
+        rango: 'C', peligrosidad: 'Media', horas_limite: 240,
         tiempo_ejecucion: 3, cr_req: 1, xp: 0,
-        recompensa: 0, 
+        recompensa: 0, estado: 'Pendiente', 
         recompensa_items: [] // <-- AHORA ES UN ARRAY PARA MÚLTIPLES OBJETOS
     };
 
+    
     const FACCIONES = [
         "Gremio Aureus", "Compañía de Berilio", "Eclipse de Luna", "Arañas de Ónice", 
         "Astilleros Nova-Kessel", "Lucero Estelar", "Unión Minera Independiente", 
         "Gremio de Recuperadores", "Analistas de la Creación", "Fundación Ánima", 
-        "Anónimo", "Otro"
+        "Asociación de Cazadores", "illusive Man", "Anónimo", "Otro"
     ];
+
 
     const [modalExtraAbierto, setModalExtraAbierto] = useState(null); 
     const [formData, setFormData] = useState(estadoInicial);
     const [nuevoReqTipo, setNuevoReqTipo] = useState('soldados');
 
-    // Lista maestra de botín disponible del GM
+
+
+// Lista maestra de botín disponible del GM y Mercado
     const botinDisponible = [
-        ...equipo.filter(e => e.propietario === 'GM').map(e => ({ ...e, tipoPrefix: 'E' })),
-        ...vehiculos.filter(v => v.propietario === 'GM').map(v => ({ ...v, tipoPrefix: 'V' })),
-        ...(soldados ? soldados.filter(s => s.lider === 'GM').map(s => ({ ...s, tipoPrefix: 'S' })) : [])
+        ...equipo.filter(e => ['GM', 'Mercado', 'Global'].includes(e.propietario)).map(e => ({ ...e, tipoPrefix: 'E' })),
+        ...vehiculos.filter(v => ['GM', 'Mercado'].includes(v.propietario)).map(v => ({ ...v, tipoPrefix: 'V' })),
+        ...(soldados ? soldados.filter(s => ['GM', 'Mercado'].includes(s.lider)).map(s => ({ ...s, tipoPrefix: 'S' })) : [])
     ].sort((a, b) => a.nombre.localeCompare(b.nombre));
 
     // --- TRUCO NINJA: AUTO-ASIGNACIÓN ---
@@ -103,13 +102,14 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
         setFormData(prev => ({ ...prev, [e.target.name]: value }));
     };
 
-    const agregarRequisito = (tipoForzado) => {
+const agregarRequisito = (tipoForzado) => {
         const tipoFinal = typeof tipoForzado === 'string' ? tipoForzado : nuevoReqTipo;
         const nuevoReq = { id: Date.now().toString() + Math.random().toString(36).substring(2, 6), tipo: tipoFinal };
         
         if (tipoFinal === 'soldados') { nuevoReq.min = 1; nuevoReq.max = 4; }
-        if (tipoFinal === 'nave') { nuevoReq.motor_subluz = ''; nuevoReq.hiperimpulsor = ''; nuevoReq.entorno = ''; nuevoReq.rol = ''; }
-        if (tipoFinal === 'droide') { nuevoReq.rol = ''; }
+        if (tipoFinal === 'nave') { nuevoReq.motor_subluz = ''; nuevoReq.hiperimpulsor = ''; nuevoReq.atributo_especial = ''; nuevoReq.rol = ''; nuevoReq.especialidad = ''; nuevoReq.nivel = 1; }
+        if (tipoFinal === 'asalto') { nuevoReq.motor_subluz = ''; nuevoReq.atributo_especial = ''; nuevoReq.rol = ''; nuevoReq.especialidad = ''; nuevoReq.nivel = 1; }
+        if (tipoFinal === 'droide') { nuevoReq.rol = ''; nuevoReq.especialidad = ''; nuevoReq.nivel = 1; }
         if (tipoFinal === 'especialidad') { nuevoReq.nombre = ''; nuevoReq.nivel = 1; }
 
         setFormData(prev => ({ ...prev, requisitos_tecnicos: [...(prev.requisitos_tecnicos || []), nuevoReq] }));
@@ -121,6 +121,41 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
 
     const updateRequisito = (id, campo, valor) => {
         setFormData(prev => ({ ...prev, requisitos_tecnicos: prev.requisitos_tecnicos.map(req => req.id === id ? { ...req, [campo]: valor } : req) }));
+    };
+
+    const addPerkToReq = (reqId) => {
+        setFormData(prev => ({
+            ...prev,
+            requisitos_tecnicos: prev.requisitos_tecnicos.map(r =>
+                r.id === reqId ? { ...r, perks: [...(r.perks || []), { nombre: '', nivel: 1 }] } : r
+            )
+        }));
+    };
+
+    const updatePerkInReq = (reqId, perkIndex, campo, valor) => {
+        setFormData(prev => ({
+            ...prev,
+            requisitos_tecnicos: prev.requisitos_tecnicos.map(r => {
+                if (r.id === reqId) {
+                    const newPerks = [...(r.perks || [])];
+                    newPerks[perkIndex] = { ...newPerks[perkIndex], [campo]: valor };
+                    return { ...r, perks: newPerks };
+                }
+                return r;
+            })
+        }));
+    };
+
+    const removePerkFromReq = (reqId, perkIndex) => {
+        setFormData(prev => ({
+            ...prev,
+            requisitos_tecnicos: prev.requisitos_tecnicos.map(r => {
+                if (r.id === reqId) {
+                    return { ...r, perks: (r.perks || []).filter((_, i) => i !== perkIndex) };
+                }
+                return r;
+            })
+        }));
     };
 
     const handleAñadirBotin = (e) => {
@@ -136,23 +171,29 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
         setFormData(prev => ({ ...prev, recompensa_items: (prev.recompensa_items || []).filter(i => i !== itemVal) }));
     };
 
-    const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             const contratistaFinal = formData.contratista_select === 'Otro' ? formData.contratista_custom : formData.contratista_select;
+            const milisegundosLimite = Number(formData.horas_limite) * 60 * 60 * 1000;
+            
             const datosGuardar = {
                 ...formData, contratista: contratistaFinal, 
                 cr_req: Number(formData.cr_req), tiempo_ejecucion: Number(formData.tiempo_ejecucion),
-                xp: Number(formData.xp) || 0, recompensa: Number(formData.recompensa) || 0 
+                xp: Number(formData.xp) || 0, recompensa: Number(formData.recompensa) || 0,
+                horas_limite: Number(formData.horas_limite)
             };
 
             delete datosGuardar.contratista_select; delete datosGuardar.contratista_custom;
             delete datosGuardar.recompensa_item_id; // Limpieza de variable vieja
             delete datosGuardar.recompensas_especiales; // Adiós información adicional
 
-            if (esEdicion) await updateDoc(doc(db, "misiones", misionData.id), datosGuardar);
+            if (esEdicion) {
+                // Al editar, renovamos la fecha límite con las horas indicadas en el form
+                datosGuardar.expira_en = Date.now() + milisegundosLimite;
+                await updateDoc(doc(db, "misiones", misionData.id), datosGuardar);
+            }
             else {
-                const milisegundosLimite = Number(formData.horas_limite) * 60 * 60 * 1000;
                 await addDoc(collection(db, "misiones"), {
                     ...datosGuardar, estado: 'Pendiente', escuadrones_id: [],
                     fecha: new Date().toLocaleDateString(), expira_en: Date.now() + milisegundosLimite
@@ -204,8 +245,9 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                             
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', backgroundColor: '#1a1a24', padding: '10px', borderRadius: '4px', border: '1px solid #333' }}>
                                 <select value={nuevoReqTipo} onChange={e => setNuevoReqTipo(e.target.value)} style={{ flex: 1, padding: '6px', backgroundColor: '#000', color: '#fff', border: '1px solid #555', borderRadius: '4px' }}>
-                                    <option value="soldados">👥 Límite de Soldados</option>
+                                    <option value="soldados">👥 Límite de Operativos</option>
                                     <option value="nave">🚀 Nave Espacial</option>
+                                    <option value="asalto">🚙 Vehículo de Asalto</option>
                                     <option value="droide">🤖 Droide Táctico</option>
                                     <option value="especialidad">✨ Especialidad (Perk)</option>
                                 </select>
@@ -226,28 +268,81 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                                                     <button type="button" onClick={() => quitarRequisito(req.id)} style={{ position: 'absolute', top: '5px', right: '5px', background: 'none', border: 'none', color: '#F44336', cursor: 'pointer', fontWeight: 'bold' }}>✖</button>
                                                     {req.tipo === 'soldados' && (
                                                         <div>
-                                                            <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>👥 Número de Operativos</strong>
-                                                            <div style={{ display: 'flex', gap: '10px' }}>
-                                                                <label style={{ flex: 1, fontSize: '0.8rem', color: '#aaa' }}>Mínimo: <input type="number" min="1" value={req.min} onChange={e => updateRequisito(req.id, 'min', Number(e.target.value))} style={{ width: '100%', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555' }} /></label>
-                                                                <label style={{ flex: 1, fontSize: '0.8rem', color: '#aaa' }}>Máximo: <input type="number" min="1" value={req.max} onChange={e => updateRequisito(req.id, 'max', Number(e.target.value))} style={{ width: '100%', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555' }} /></label>
+                                                            <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>👥 Número de Operativos (Incluye al Líder)</strong>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', backgroundColor: '#000', padding: '15px', borderRadius: '6px', border: '1px solid #00BCD4' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                                    <label style={{ fontSize: '0.75rem', color: '#00BCD4', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '5px' }}>Mínimo</label>
+                                                                    <input type="number" min="1" value={req.min} onChange={e => updateRequisito(req.id, 'min', Number(e.target.value))} style={{ width: '60px', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', textAlign: 'center', fontSize: '1.1rem' }} />
+                                                                </div>
+                                                                <div style={{ color: '#555', fontSize: '1.5rem' }}>~</div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                                    <label style={{ fontSize: '0.75rem', color: '#00BCD4', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '5px' }}>Máximo</label>
+                                                                    <input type="number" min="1" value={req.max} onChange={e => updateRequisito(req.id, 'max', Number(e.target.value))} style={{ width: '60px', padding: '8px', background: '#111', color: '#fff', border: '1px solid #555', borderRadius: '4px', textAlign: 'center', fontSize: '1.1rem' }} />
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     )}
+
                                                     {req.tipo === 'nave' && (
                                                         <div>
-                                                            <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>🚀 Vehículo Requerido</strong>
+                                                            <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>🚀 Nave Espacial Requerida</strong>
                                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                                                <select value={req.motor_subluz} onChange={e => updateRequisito(req.id, 'motor_subluz', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Motor Subluz --</option>{[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Nivel {n} o sup.</option>)}</select>
-                                                                <select value={req.hiperimpulsor} onChange={e => updateRequisito(req.id, 'hiperimpulsor', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Hiperimpulsor --</option>{[0.5, 1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>Clase {n} o inf.</option>)}</select>
-                                                                <select value={req.entorno} onChange={e => updateRequisito(req.id, 'entorno', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Entorno --</option><option value="Terrestre">Terrestre</option><option value="Aéreo">Aéreo</option><option value="Acuático">Acuático</option><option value="Espacial">Espacial</option></select>
-                                                                <select value={req.rol} onChange={e => updateRequisito(req.id, 'rol', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Rol de Nave --</option><option value="Transporte">Transporte</option><option value="Apoyo">Apoyo</option><option value="Asalto">Asalto</option><option value="Exploración">Exploración</option></select>
+                                                                <select value={req.motor_subluz || ''} onChange={e => updateRequisito(req.id, 'motor_subluz', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Motor Subluz --</option>{[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Nivel {n} o sup.</option>)}</select>
+                                                                <select value={req.hiperimpulsor || ''} onChange={e => updateRequisito(req.id, 'hiperimpulsor', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Hiperimpulsor --</option>{[0.5, 1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>Clase {n} o inf.</option>)}</select>
+                                                                <select value={req.atributo_especial || ''} onChange={e => updateRequisito(req.id, 'atributo_especial', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Tamaño Físico --</option>{TAMAÑOS_NAVE.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                                                                <select value={req.rol || ''} onChange={e => updateRequisito(req.id, 'rol', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Rol Táctico --</option>{ROLES_NAVE.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                                                            </div>
+                                                            <div style={{ marginTop: '10px', padding: '8px', backgroundColor: 'rgba(0,188,212,0.1)', borderRadius: '4px', border: '1px solid rgba(0,188,212,0.3)' }}>
+                                                                <strong style={{ color: '#00BCD4', fontSize: '0.75rem', display: 'block', marginBottom: '5px' }}>⚙️ Sistemas Específicos Múltiples:</strong>
+                                                                {(req.perks || []).map((p, i) => (
+                                                                    <div key={i} style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                                                        <select value={p.nombre || ''} onChange={e => updatePerkInReq(req.id, i, 'nombre', e.target.value)} style={{ flex: 1, padding: '4px', background: '#000', color: '#00BCD4', border: '1px solid #00BCD4', fontSize: '0.8rem' }}><option value="">-- Seleccionar Módulo --</option>{TAGS_VEHICULOS.map((cat, idx) => (<optgroup key={idx} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item} disabled={(req.perks||[]).some((existingP, existingI) => existingP.nombre === item && existingI !== i)}>{item}</option>)}</optgroup>))}</select>
+                                                                        <input type="number" min="1" value={p.nivel || 1} onChange={e => updatePerkInReq(req.id, i, 'nivel', Number(e.target.value))} style={{ width: '45px', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555' }} title="Nivel Mínimo" />
+                                                                        <button type="button" onClick={() => removePerkFromReq(req.id, i)} style={{ background: 'none', border: 'none', color: '#F44336', cursor: 'pointer', fontWeight: 'bold' }}>✖</button>
+                                                                    </div>
+                                                                ))}
+                                                                <button type="button" onClick={() => addPerkToReq(req.id)} style={{ width: '100%', marginTop: '5px', background: 'transparent', color: '#00BCD4', border: '1px dashed #00BCD4', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>+ Añadir módulo de nave</button>
                                                             </div>
                                                         </div>
                                                     )}
+
+                                                    {req.tipo === 'asalto' && (
+                                                        <div>
+                                                            <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>🚙 Vehículo de Asalto Requerido</strong>
+                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                                                <select value={req.motor_subluz || ''} onChange={e => updateRequisito(req.id, 'motor_subluz', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Motor Subluz --</option>{[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Nivel {n} o sup.</option>)}</select>
+                                                                <select value={req.atributo_especial || ''} onChange={e => updateRequisito(req.id, 'atributo_especial', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Tracción --</option>{TRACCION_ASALTO.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                                                                <select value={req.rol || ''} onChange={e => updateRequisito(req.id, 'rol', e.target.value)} style={{ padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem', gridColumn: 'span 2' }}><option value="">-- Rol Táctico --</option>{ROLES_ASALTO.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                                                            </div>
+                                                            <div style={{ marginTop: '10px', padding: '8px', backgroundColor: 'rgba(0,188,212,0.1)', borderRadius: '4px', border: '1px solid rgba(0,188,212,0.3)' }}>
+                                                                <strong style={{ color: '#00BCD4', fontSize: '0.75rem', display: 'block', marginBottom: '5px' }}>⚙️ Sistemas Específicos Múltiples:</strong>
+                                                                {(req.perks || []).map((p, i) => (
+                                                                    <div key={i} style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                                                        <select value={p.nombre || ''} onChange={e => updatePerkInReq(req.id, i, 'nombre', e.target.value)} style={{ flex: 1, padding: '4px', background: '#000', color: '#00BCD4', border: '1px solid #00BCD4', fontSize: '0.8rem' }}><option value="">-- Seleccionar Módulo --</option>{TAGS_VEHICULOS.map((cat, idx) => (<optgroup key={idx} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item} disabled={(req.perks||[]).some((existingP, existingI) => existingP.nombre === item && existingI !== i)}>{item}</option>)}</optgroup>))}</select>
+                                                                        <input type="number" min="1" value={p.nivel || 1} onChange={e => updatePerkInReq(req.id, i, 'nivel', Number(e.target.value))} style={{ width: '45px', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555' }} title="Nivel Mínimo" />
+                                                                        <button type="button" onClick={() => removePerkFromReq(req.id, i)} style={{ background: 'none', border: 'none', color: '#F44336', cursor: 'pointer', fontWeight: 'bold' }}>✖</button>
+                                                                    </div>
+                                                                ))}
+                                                                <button type="button" onClick={() => addPerkToReq(req.id)} style={{ width: '100%', marginTop: '5px', background: 'transparent', color: '#00BCD4', border: '1px dashed #00BCD4', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>+ Añadir módulo de asalto</button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     {req.tipo === 'droide' && (
                                                         <div>
                                                             <strong style={{ color: '#fff', fontSize: '0.85rem', display: 'block', marginBottom: '8px' }}>🤖 Droide Táctico</strong>
-                                                            <select value={req.rol} onChange={e => updateRequisito(req.id, 'rol', e.target.value)} style={{ width: '100%', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}><option value="">-- Cualquier Rol --</option><option value="Médico">Médico</option><option value="Protocolo">Protocolo</option><option value="Combate">Combate</option><option value="Espionaje">Espionaje</option><option value="Utilidad">Utilidad</option></select>
+                                                            <select value={req.rol || ''} onChange={e => updateRequisito(req.id, 'rol', e.target.value)} style={{ width: '100%', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem', marginBottom: '8px' }}><option value="">-- Cualquier Rol --</option>{ROLES_DROIDE.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                                                            <div style={{ marginTop: '10px', padding: '8px', backgroundColor: 'rgba(0,188,212,0.1)', borderRadius: '4px', border: '1px solid rgba(0,188,212,0.3)' }}>
+                                                                <strong style={{ color: '#00BCD4', fontSize: '0.75rem', display: 'block', marginBottom: '5px' }}>🧠 Protocolos Múltiples:</strong>
+                                                                {(req.perks || []).map((p, i) => (
+                                                                    <div key={i} style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                                                        <select value={p.nombre || ''} onChange={e => updatePerkInReq(req.id, i, 'nombre', e.target.value)} style={{ flex: 1, padding: '4px', background: '#000', color: '#00BCD4', border: '1px solid #00BCD4', fontSize: '0.8rem' }}><option value="">-- Seleccionar Protocolo --</option>{TAGS_DROIDE.map((cat, idx) => (<optgroup key={idx} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item} disabled={(req.perks||[]).some((existingP, existingI) => existingP.nombre === item && existingI !== i)}>{item}</option>)}</optgroup>))}</select>
+                                                                        <input type="number" min="1" value={p.nivel || 1} onChange={e => updatePerkInReq(req.id, i, 'nivel', Number(e.target.value))} style={{ width: '45px', padding: '4px', background: '#000', color: '#fff', border: '1px solid #555' }} title="Nivel Mínimo" />
+                                                                        <button type="button" onClick={() => removePerkFromReq(req.id, i)} style={{ background: 'none', border: 'none', color: '#F44336', cursor: 'pointer', fontWeight: 'bold' }}>✖</button>
+                                                                    </div>
+                                                                ))}
+                                                                <button type="button" onClick={() => addPerkToReq(req.id)} style={{ width: '100%', marginTop: '5px', background: 'transparent', color: '#00BCD4', border: '1px dashed #00BCD4', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>+ Añadir protocolo a droide</button>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -261,7 +356,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                                                             <div key={req.id} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                                                 <select value={req.nombre || ''} onChange={e => updateRequisito(req.id, 'nombre', e.target.value)} style={{ flex: 2, padding: '4px', background: '#000', color: '#fff', border: '1px solid #555', fontSize: '0.8rem' }}>
                                                                     <option value="">-- Seleccionar --</option>
-                                                                    {LISTA_ESPECIALIDADES.map((cat, idx) => (
+                                                                    {TAGS_PERSONAJES.map((cat, idx) => (
                                                                         <optgroup key={idx} label={cat.grupo}>{cat.items.map(item => <option key={item} value={item}>{item}</option>)}</optgroup>
                                                                     ))}
                                                                 </select>
@@ -282,9 +377,9 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
                         </div>
                         
                         <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                            <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Dificultad (CR):</label><select name="rango" value={formData.rango || 'C'} onChange={handleChange}><option>E</option><option>D</option><option>C</option><option>B</option><option>A</option><option>S</option><option>SS</option></select></div>
+                            <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Rango:</label><select name="rango" value={formData.rango || 'C'} onChange={handleChange}><option>E</option><option>D</option><option>C</option><option>B</option><option>A</option><option>S</option><option>SS</option></select></div>
                             <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Peligrosidad:</label><select name="peligrosidad" value={formData.peligrosidad || 'Media'} onChange={handleChange}><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option><option value="Extrema">Extrema</option></select></div>
-                            {!esEdicion && <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Validez (Hrs):</label><input type="number" name="horas_limite" value={formData.horas_limite || 48} onChange={handleChange} required min="1" /></div>}
+                            <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Validez (Hrs):</label><input type="number" name="horas_limite" value={formData.horas_limite !== undefined ? formData.horas_limite : 240} onChange={handleChange} required min="1" /></div>                        
                         </div>
 
                         {/* ZONA DE RECOMPENSAS (MÚLTIPLES) */}

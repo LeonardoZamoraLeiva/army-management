@@ -11,7 +11,7 @@ import { formatoTiempo, calcularPosicionEnRuta, getAtributosAstro } from '../uti
 
 import ModalPlaneta from './ModalPlaneta';
 import ModalMision from './ModalMision'; 
-import ModalDesplegar from './ModalDesplegar'; 
+import ModalDesplegar, { evaluarRequisitos } from './ModalDesplegar'; 
 import ModalAAR from './ModalAAR'; 
 import { getMoralData, calcularTREscuadron } from './Escuadrones';
 import { calcularPlanDeVuelo } from '../utils/navegacion';
@@ -23,6 +23,8 @@ import { EscuadronEnTransito } from './mapa/CapaEscuadrones';
 import { CapaDinamicaPlanetas } from './mapa/CapaPlanetas';
 import { HerramientaMapaEventos, AutoCentrarMapa } from './mapa/HerramientasMapa';
 import TarjetaMisionGlobal from './TarjetaMisionGlobal';
+
+
 
 export default function MapaEstelar() {
     const { planetas, escuadrones, soldados, vehiculos, equipo, userRole, recargarTodo } = useData();
@@ -59,17 +61,32 @@ export default function MapaEstelar() {
     const [inputMinutos, setInputMinutos] = useState(1); 
     const [mostrarTiempo, setMostrarTiempo] = useState(false);
 
+    const [origenMision, setOrigenMision] = useState('planeta');
+
     const toggleMenu = (menu) => { if (menuPrincipal === menu) cerrarHUD(); else { setMenuPrincipal(menu); setPlanetaVistoId(null); setMisionVistaId(null); } };
     const cerrarHUD = () => { setMenuPrincipal(null); setPlanetaVistoId(null); setMisionVistaId(null); setModoMoverPines(false); setModoConexion(null); };
-    const volverAPlaneta = () => { setMisionVistaId(null); };
     
+    const volverAPlaneta = () => { 
+            if (origenMision === 'menu') {
+                setMisionVistaId(null);
+                setPlanetaVistoId(null);
+                setMenuPrincipal('misiones');
+            } else {
+                setMisionVistaId(null); 
+            }
+        }; 
+
     const abrirPlaneta = (idPlaneta, conVuelo = true) => {
         setPlanetaVistoId(idPlaneta); setMisionVistaId(null); setMenuPrincipal(null);
         if (conVuelo) { const p = planetas.find(x => x.id === idPlaneta); if (p) setVueloDirecto(p.coords); }
     };
 
-    const abrirMision = (mision) => {
-        setPlanetaVistoId(mision.ubicacion_id); setMisionVistaId(mision.id); setMenuPrincipal(null);
+// Ahora le pasamos explícitamente el origen ('menu' o 'planeta')
+    const abrirMision = (mision, origen) => {
+        setOrigenMision(origen); 
+        setPlanetaVistoId(mision.ubicacion_id); 
+        setMisionVistaId(mision.id); 
+        setMenuPrincipal(null);
         const p = planetas.find(x => x.id === mision.ubicacion_id); if (p) setVueloDirecto(p.coords);
     };
 
@@ -115,8 +132,10 @@ export default function MapaEstelar() {
     const planetaEnfocado = planetas.find(p => String(p.id) === String(planetaVistoId));
     const misionEnfocada = misiones.find(m => String(m.id) === String(misionVistaId));
 
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => { setMisiones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.estado !== 'Archivada')); });
+useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, "misiones"), (snapshot) => { 
+            setMisiones(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); 
+        });
         return () => unsubscribe();
     }, []);
 
@@ -155,14 +174,26 @@ export default function MapaEstelar() {
                 await updateDoc(doc(db, "misiones", m.id), { escuadrones_id: m.escuadrones_id.filter(id => String(id) !== String(escuadronId)) });
             }
         }
-        await updateDoc(doc(db, "misiones", misionDestino.id), { escuadrones_id: [...(misionDestino.escuadrones_id || []), escuadronId] });
+            await updateDoc(doc(db, "misiones", misionDestino.id), { escuadrones_id: arrayUnion(escuadronId) });
         recargarTodo();
     };
 
     const handleDragOver = (e) => e.preventDefault(); 
+
     const solicitarDespliegueMision = (mision) => {
         const escAsignados = (mision.escuadrones_id || []).map(id => escuadrones.find(e => String(e.id) === String(id))).filter(Boolean);
         if(escAsignados.length === 0) { alert("⚠️ No hay fuerzas asignadas."); return; }
+
+        // El primer escuadrón suele ser el líder de la operación
+        const miEscuadron = escAsignados[0];
+        
+        // REUTILIZAMOS LA LÓGICA DEL POOL
+        const evaluacion = analizarRequisitos(miEscuadron, mision, soldados, vehiculos, equipo);
+        
+        if (!evaluacion.apto) {
+            return alert(`❌ OPERACIÓN DENEGADA.\n\nEl escuadrón no cumple con los requisitos del pool:\n- ` + evaluacion.fallos.join('\n- '));
+        }
+
         setConfirmacionDespliegue({ mision, escuadronesDesplegados: escAsignados });
     };
 
@@ -242,17 +273,45 @@ export default function MapaEstelar() {
         const dangerStats = DANGER_TABLE[mision.peligrosidad || 'Media'];
         const valorRango = { 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6, 'SS': 7 }[mision.rango] || 3; 
         let puntosPrestigioDelta = exito ? (2 + Math.round((100 - probExitoReal) / 10) + valorRango) : (-1 - Math.round(probExitoReal / 10) - (8 - valorRango));
-        const xpMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
-        const xpBaseGained = exito ? xpMision : Math.round(xpMision / 6); 
+        
+        // ====================================================================
+        // 1. NUEVO CÁLCULO DE XP INDIVIDUAL (ESTILO D&D 5e)
+        // ====================================================================
+        const multiXP = { 'E': 0.7, 'D': 0.8, 'C': 0.9, 'B': 1.0, 'A': 1.1, 'S': 1.2, 'SS': 1.5 };
+        const multiplicadorRango = multiXP[mision.rango] || 1.0;
+        
+        // XP Base Total de la Misión
+        const xpBaseMision = mision.xp ? Number(mision.xp) : (mision.cr_req || 1) * 150;
+        const xpTotalModificada = Math.round(xpBaseMision * multiplicadorRango);
+
+        // Contar total de soldados asignados para dividir el botín de XP
+        let cantSoldadosEnMision = 0;
+        const escAsignados = (mision.escuadrones_id || []).map(id => escuadrones.find(e => String(e.id) === String(id))).filter(Boolean);
+        
+        escAsignados.forEach(esc => {
+            cantSoldadosEnMision += [esc.lider_id, ...(esc.miembros || [])].filter(Boolean).length;
+        });
+        if (cantSoldadosEnMision === 0) cantSoldadosEnMision = 1; // Evitar división por cero
+
+        // XP final que recibe CADA soldado individualmente
+        const xpPorSoldado = Math.round(xpTotalModificada / cantSoldadosEnMision);
+        const xpBaseGained = exito ? xpPorSoldado : Math.round(xpPorSoldado / 6); 
+        // ====================================================================
+
         const creditosEnJuego = Number(mision.recompensa) || 0;
         
-        // 1. RECOMPENSA CON EL NUEVO EMOJI DE CRÉDITOS
+        // RECOMPENSA CON EL NUEVO EMOJI DE CRÉDITOS
         const recompensaObtenida = exito && creditosEnJuego > 0 ? `🪙 ${creditosEnJuego.toLocaleString('es-CL')} Créditos` : "Ninguna";
         
+        // ====================================================================
+        // 2. CÁLCULO DE XP DEL ESCUADRÓN (Para subir de Rango I a V)
+        // ====================================================================
         let multDif = 1; const crTarget = Math.round(crFuerzaTotal);
         if (mision.cr_req < crTarget - 0.5) multDif = 0.5; else if (mision.cr_req > crTarget + 0.5) multDif = 1.5;
-        const multRango = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.5, 'S': 2.0, 'SS': 5.0 }[mision.rango] || 1;
-        const xpEscuadronGanada = exito ? Math.round((1 * multDif * multRango) * 10) / 10 : 0;
+        
+        // Balanceamos estos multiplicadores también (antes SS era x5.0)
+        const multRangoEsc = { 'E': 0.5, 'D': 0.7, 'C': 0.9, 'B': 1.0, 'A': 1.2, 'S': 1.5, 'SS': 2.0 }[mision.rango] || 1;
+        const xpEscuadronGanada = exito ? Math.round((1 * multDif * multRangoEsc) * 10) / 10 : 0;
         const poderRatio = Math.max(0.5, crFuerzaTotal / (mision.cr_req || 1));
         
         let reporteBajasGlobal = []; let nombresEscuadrones = [];
@@ -376,12 +435,29 @@ export default function MapaEstelar() {
         const diffCmdte = cmdteA.localeCompare(cmdteB); if (diffCmdte !== 0) return diffCmdte; return a.nombre.localeCompare(b.nombre);
     });
 
+const [ocultarCompletadas, setOcultarCompletadas] = useState(true);
+    const [ocultarExpiradas, setOcultarExpiradas] = useState(true);
+
     const misionesFiltradas = misiones.filter(m => {
+        const esArchivada = m.estado === 'Archivada';
+        const expirada = m.estado === 'Pendiente' && m.expira_en && Date.now() > m.expira_en;
+
+        if (ocultarCompletadas && esArchivada) return false;
+        if (ocultarExpiradas && expirada) return false;
+
         if (filtrosMision.rango && m.rango !== filtrosMision.rango) return false;
         if (filtrosMision.peligrosidad && m.peligrosidad !== filtrosMision.peligrosidad) return false;
         if (filtrosMision.minRecompensa) { const valorMinimo = parseInt(filtrosMision.minRecompensa) || 0; const valorMision = parseInt((m.recompensa || "0").replace(/\D/g, '')) || 0; if (valorMision < valorMinimo) return false; }
         return true;
     });
+
+    const reactivarMision = async (misionId, horasLimite, e) => {
+        e.stopPropagation();
+        if (!window.confirm("¿Reactivar esta misión y reiniciar su contador de expiración?")) return;
+        const milisegundosExtra = (horasLimite || 240) * 3600000;
+        await updateDoc(doc(db, "misiones", misionId), { expira_en: Date.now() + milisegundosExtra });
+        recargarTodo();
+    };
 
     const rutasEstaticas = useMemo(() => {
         return planetas.flatMap(p => (p.conexiones || []).map(tId => {
@@ -441,7 +517,9 @@ export default function MapaEstelar() {
                         {misionVistaId ? (
                             <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '75vh' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px 12px', borderBottom: '1px solid rgba(244, 67, 54, 0.4)', alignItems: 'center' }}>
-                                    <button onClick={volverAPlaneta} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>⬅ 🪐 {planetaEnfocado?.nombre || 'Volver'}</button>
+                                    <button onClick={volverAPlaneta} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                        ⬅ {origenMision === 'menu' ? 'Volver a Contratos' : `🪐 ${planetaEnfocado?.nombre || 'Volver'}`}
+                                    </button>
                                     <button onClick={cerrarHUD} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer' }}>✖</button>
                                 </div>
                                 <div className="scroll-interno" style={{ overflowY: 'auto', padding: '10px' }}>
@@ -480,16 +558,35 @@ export default function MapaEstelar() {
                                 <div className="scroll-interno" style={{ overflowY: 'auto', padding: '15px' }}>
                                     {planetaEnfocado?.descripcion && <div style={{ fontSize: '0.8rem', color: '#aaa', fontStyle: 'italic', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px dashed #333' }}>{planetaEnfocado.descripcion}</div>}
                                     
-                                    <h4 style={{ color: '#FFC107', margin: '0 0 8px 0', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,193,7,0.3)' }}>📜 CONTRATOS LOCALES</h4>
+                            <h4 style={{ color: '#FFC107', margin: '0 0 8px 0', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,193,7,0.3)' }}>📜 CONTRATOS LOCALES</h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '20px' }}>
                                         {misiones.filter(m => String(m.ubicacion_id) === String(planetaVistoId)).length === 0 ? <span style={{fontSize: '0.75rem', color: '#666'}}>Sin operaciones.</span> : 
-                                        misiones.filter(m => String(m.ubicacion_id) === String(planetaVistoId)).map(m => (
-                                            <div key={m.id} onClick={() => abrirMision(m)} style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: '2px solid #FFC107' }}>
-                                                <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{m.titulo}</div>
-                                                <div style={{ fontSize: '0.7rem', color: '#aaa' }}>Rango {m.rango} | {m.peligrosidad}</div>
-                                            </div>
-                                        ))}
-                                        {esGM && <button onClick={() => { setMisionParaEditar({ ubicacion_id: planetaVistoId }); setIsModalMisionOpen(true); }} style={{ background: 'none', color: '#F44336', border: '1px dashed #F44336', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', marginTop: '4px' }}>+ Nuevo Contrato</button>}
+                                        misiones.filter(m => String(m.ubicacion_id) === String(planetaVistoId)).map(m => {
+                                            const esArchivada = m.estado === 'Archivada';
+                                            const expirada = m.estado === 'Pendiente' && m.expira_en && Date.now() > m.expira_en;
+                                            const horasRestantes = (m.estado === 'Pendiente' && m.expira_en) ? Math.max(0, Math.floor((m.expira_en - Date.now()) / 3600000)) : 0;
+                                            
+                                            // Aplicamos los filtros
+                                            if (ocultarCompletadas && esArchivada) return null;
+                                            if (ocultarExpiradas && expirada) return null;
+
+                                            return (
+                                                <div key={m.id} onClick={() => abrirMision(m, 'planeta')} style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: `2px solid ${esArchivada ? '#4CAF50' : (expirada ? '#555' : '#FFC107')}`, opacity: (esArchivada || expirada) ? 0.5 : 1 }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <div style={{ fontSize: '0.85rem', color: esArchivada ? '#4CAF50' : (expirada ? '#888' : '#fff'), fontWeight: 'bold', textDecoration: esArchivada ? 'line-through' : 'none' }}>{m.titulo}</div>
+                                                        {esGM && expirada && <button onClick={(e) => reactivarMision(m.id, m.horas_limite, e)} style={{ background: '#FF9800', color: '#111', border: 'none', borderRadius: '4px', fontSize: '0.6rem', padding: '2px 5px', fontWeight: 'bold', cursor: 'pointer' }}>Reactivar</button>}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '3px' }}>
+                                                        Rango {m.rango} | {m.peligrosidad} | <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>TR Req: {m.cr_req || 1}</span>
+                                                    </div>
+                                                    
+                                                    {esArchivada && <div style={{ fontSize: '0.65rem', color: '#4CAF50', marginTop: '4px', fontWeight: 'bold' }}>✅ Superada</div>}
+                                                    {expirada && <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '4px', fontWeight: 'bold' }}>⏳ Expirada</div>}
+                                                    {!esArchivada && !expirada && m.expira_en && m.estado !== 'Desplegada' && <div style={{ fontSize: '0.65rem', color: '#00BCD4', marginTop: '4px' }}>⏱️ Expira en {horasRestantes}h</div>}
+                                                </div>
+                                            );
+                                        })}
+                                        {esGM && <button onClick={() => { setMisionParaEditar({ ubicacion_id: planetaVistoId }); setIsModalMisionOpen(true); }} style={{ background: 'none', color: '#F44336', border: '1px dashed #F44336', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', marginTop: '4px' }}>+ Nuevo Contrato Local</button>}
                                     </div>
 
                                     <h4 style={{ color: '#4CAF50', margin: '0 0 8px 0', fontSize: '0.8rem', borderBottom: '1px solid rgba(76,175,80,0.3)' }}>🛰️ HANGAR LOCAL</h4>
@@ -499,13 +596,37 @@ export default function MapaEstelar() {
                                             const enOperacion = !!misionActual;
                                             const puedeMover = !enOperacion && (esGM || esc.faccion === userRole);
                                             
+                                            // Cálculo táctico a prueba de fallos
+                                            const liderName = soldados.find(s => s.id === esc.lider_id)?.nombre || 'Sin Comandante';
+                                            const trData = calcularTREscuadron ? calcularTREscuadron(esc, soldados, vehiculos, equipo) : 0;
+                                            const trTotal = (trData && typeof trData === 'object') ? (trData.total || 0) : (Number(trData) || 0);
+                                            const numEfectivos = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean).length;
+                                            
+                                            // Filtro de Vehículos
+                                            const vehiculosAsignados = vehiculos.filter(v => (esc.vehiculos || []).includes(v.id) || v.id === esc.nave_id || v.id === esc.droide_id || v.id === esc.vehiculo_id);
+                                            const tieneNave = vehiculosAsignados.some(v => v.categoria === 'Nave') ? 'Sí' : 'No';
+                                            const tieneDroide = vehiculosAsignados.some(v => v.categoria === 'Droide') ? 'Sí' : 'No';
+                                            const tieneAsalto = vehiculosAsignados.some(v => v.categoria === 'Terrestre' || v.categoria === 'Vehículo') ? 'Sí' : 'No';
+
                                             return (
-                                                <div key={esc.id} style={{ display: 'flex', flexDirection: 'column', backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', borderLeft: `2px solid ${enOperacion ? '#F44336' : '#4CAF50'}` }}>
+                                                <div key={esc.id} style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '8px', borderRadius: '4px', borderLeft: `2px solid ${enOperacion ? '#F44336' : '#4CAF50'}` }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 'bold' }}>{esc.nombre}</span>
-                                                        {puedeMover && <button onClick={() => iniciarNavegacion(esc)} style={{ backgroundColor: '#4CAF50', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem' }}>NAVEGAR</button>}
+                                                        <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#fff' }}>🛡️ {esc.nombre}</span>
+                                                        {puedeMover && <button onClick={() => iniciarNavegacion(esc)} style={{ backgroundColor: '#4CAF50', color: '#fff', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}>NAVEGAR</button>}
                                                     </div>
-                                                    {enOperacion && <div style={{ fontSize: '0.7rem', color: '#F44336', marginTop: '4px', fontWeight: 'bold' }}>BLOQUEADO: EN OPERACIÓN</div>}
+                                                    <div style={{ color: '#aaa', fontSize: '0.7rem', fontWeight: 'normal', margin: '2px 0' }}>Líder: {liderName}</div>
+                                                    
+                                                    <div style={{ fontSize: '0.65rem', color: '#00BCD4', margin: '5px 0', display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #333', paddingBottom: '4px' }}>
+                                                        <span><b>TR:</b> {trTotal.toFixed(1)}</span>
+                                                        <span style={{ color: '#555' }}>|</span>
+                                                        <span><b>Efectivos:</b> {numEfectivos}</span>
+                                                        <span style={{ color: '#555' }}>|</span>
+                                                        <span style={{ color: '#aaa' }}>🚀:{tieneNave} 🤖:{tieneDroide} 🚙:{tieneAsalto}</span>
+                                                    </div>
+
+                                                    <div style={{ fontSize: '0.7rem', color: enOperacion ? '#F44336' : '#4CAF50', fontWeight: 'bold' }}>
+                                                        {enOperacion ? `⚔️ En Op: ${misionActual.titulo}` : '🛰️ Estacionado (Reserva)'}
+                                                    </div>
                                                 </div>
                                             );
                                         })}
@@ -527,26 +648,91 @@ export default function MapaEstelar() {
                                         </div>
                                     ))}
 
-                                    {menuPrincipal === 'misiones' && misionesFiltradas.map(m => (
-                                        <div key={m.id} onClick={() => abrirMision(m)} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: '2px solid #F44336' }}>
-                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#fff' }}>{m.titulo}</div>
-                                            <div style={{ fontSize: '0.7rem', color: '#aaa' }}>Planeta: {planetas.find(p => p.id === m.ubicacion_id)?.nombre || 'Desconocido'}</div>
-                                        </div>
-                                    ))}
+                                    {menuPrincipal === 'misiones' && (
+                                        <>
+                                            <div style={{ display: 'flex', gap: '10px', padding: '0 8px 8px 8px', fontSize: '0.75rem', color: '#aaa', borderBottom: '1px dashed #333', marginBottom: '8px' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={!ocultarCompletadas} onChange={e => setOcultarCompletadas(!e.target.checked)} /> Mostrar Superadas
+                                                </label>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={!ocultarExpiradas} onChange={e => setOcultarExpiradas(!e.target.checked)} /> Mostrar Expiradas
+                                                </label>
+                                            </div>
 
-                                    {menuPrincipal === 'escuadrones' && escuadronesOrdenados.map(esc => {
+                                            {misionesFiltradas.map(m => {
+                                                const estaDesplegada = m.estado === 'Desplegada';
+                                                const esArchivada = m.estado === 'Archivada';
+                                                const expirada = m.estado === 'Pendiente' && m.expira_en && Date.now() > m.expira_en;
+                                                const horasRestantes = (m.estado === 'Pendiente' && m.expira_en) ? Math.max(0, Math.floor((m.expira_en - Date.now()) / 3600000)) : 0;
+                                                const escuadronEnMision = estaDesplegada ? escuadrones.find(e => (m.escuadrones_id || []).includes(e.id)) : null;
+                                                
+                                                let bordeColor = '#F44336';
+                                                if (estaDesplegada) bordeColor = '#FF9800';
+                                                if (esArchivada) bordeColor = '#4CAF50';
+                                                if (expirada) bordeColor = '#555';
+
+                                                return (
+                                                    <div key={m.id} onClick={() => abrirMision(m, 'menu')} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: `2px solid ${bordeColor}`, opacity: (esArchivada || expirada) ? 0.5 : 1 }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: esArchivada ? '#4CAF50' : (expirada ? '#888' : '#fff'), textDecoration: esArchivada ? 'line-through' : 'none' }}>{m.titulo}</div>
+                                                            {esGM && expirada && <button onClick={(e) => reactivarMision(m.id, m.horas_limite, e)} style={{ background: '#FF9800', color: '#111', border: 'none', borderRadius: '4px', fontSize: '0.6rem', padding: '2px 6px', fontWeight: 'bold', cursor: 'pointer' }}>Reactivar</button>}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '2px' }}>Planeta: {planetas.find(p => p.id === m.ubicacion_id)?.nombre || 'Desconocido'}</div>
+                                                        
+                                                        {estaDesplegada && <div style={{ fontSize: '0.7rem', color: '#FF9800', marginTop: '4px', fontWeight: 'bold' }}>⚠️ En Ejecución por: {escuadronEnMision ? escuadronEnMision.nombre : 'Fuerzas Aliadas'}</div>}
+                                                        {esArchivada && <div style={{ fontSize: '0.7rem', color: '#4CAF50', marginTop: '4px', fontWeight: 'bold' }}>✅ Contrato Superado</div>}
+                                                        {expirada && <div style={{ fontSize: '0.7rem', color: '#888', marginTop: '4px', fontWeight: 'bold' }}>⏳ Contrato Expirado</div>}
+                                                        {!estaDesplegada && !esArchivada && !expirada && m.expira_en && <div style={{ fontSize: '0.65rem', color: '#00BCD4', marginTop: '4px' }}>⏱️ Expira en {horasRestantes} h</div>}
+                                                    </div>
+                                                )
+                                            })}
+
+                                            {esGM && (
+                                                <div onClick={() => { setMisionParaEditar(null); setIsModalMisionOpen(true); }} style={{ border: '1px dashed #F44336', padding: '10px', marginTop: '10px', textAlign: 'center', color: '#F44336', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold', backgroundColor: 'rgba(244, 67, 54, 0.05)' }}>
+                                                    + Redactar Nuevo Contrato
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+
+                                {menuPrincipal === 'escuadrones' && escuadronesOrdenados.map(esc => {
                                         const enViaje = esc.estado_movimiento === 'En Tránsito';
                                         const misionActual = misiones.find(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(esc.id));
                                         const enOperacion = !!misionActual;
+
+                                        // Cálculo táctico a prueba de fallos
+                                        const liderName = soldados.find(s => s.id === esc.lider_id)?.nombre || 'Sin Comandante';
+                                        const trData = calcularTREscuadron ? calcularTREscuadron(esc, soldados, vehiculos, equipo) : 0;
+                                        const trTotal = (trData && typeof trData === 'object') ? (trData.total || 0) : (Number(trData) || 0);
+                                        const numEfectivos = [esc.lider_id, ...(esc.miembros || [])].filter(Boolean).length;
+                                        
+                                        // Filtro de Vehículos
+                                        const vehiculosAsignados = vehiculos.filter(v => (esc.vehiculos || []).includes(v.id) || v.id === esc.nave_id || v.id === esc.droide_id || v.id === esc.vehiculo_id);
+                                        const tieneNave = vehiculosAsignados.some(v => v.categoria === 'Nave') ? 'Sí' : 'No';
+                                        const tieneDroide = vehiculosAsignados.some(v => v.categoria === 'Droide') ? 'Sí' : 'No';
+                                        const tieneAsalto = vehiculosAsignados.some(v => v.categoria === 'Terrestre' || v.categoria === 'Vehículo') ? 'Sí' : 'No';
 
                                         return (
                                             <div key={esc.id} onClick={() => {
                                                 if (enViaje) { const pos = calcularPosicionEnRuta(esc, Date.now()); if (pos) setVueloDirecto(pos); cerrarHUD(); }
                                                 else if (esc.ubicacion_actual_id) { abrirPlaneta(esc.ubicacion_actual_id); }
                                             }} style={{ backgroundColor: 'rgba(0,0,0,0.4)', padding: '8px', borderRadius: '4px', cursor: 'pointer', borderLeft: `2px solid ${enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50')}` }}>
-                                                <div style={{ fontWeight: 'bold', fontSize: '0.8rem', color: '#fff' }}>🛡️ {esc.nombre}</div>
-                                                <div style={{ fontSize: '0.7rem', color: enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50') }}>
-                                                    {enViaje ? '🚀 En Tránsito' : enOperacion ? `⚔️ En Op: ${misionActual.titulo}` : '🛰️ Estacionado'}
+                                                
+                                                <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>🛡️ {esc.nombre}</span>
+                                                    <span style={{ color: '#aaa', fontSize: '0.7rem', fontWeight: 'normal' }}>Líder: {liderName}</span>
+                                                </div>
+                                                
+                                                <div style={{ fontSize: '0.65rem', color: '#00BCD4', margin: '5px 0', display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #333', paddingBottom: '4px' }}>
+                                                    <span><b>TR:</b> {trTotal.toFixed(1)}</span>
+                                                    <span style={{ color: '#555' }}>|</span>
+                                                    <span><b>Efectivos:</b> {numEfectivos}</span>
+                                                    <span style={{ color: '#555' }}>|</span>
+                                                    <span style={{ color: '#aaa' }}>🚀:{tieneNave} 🤖:{tieneDroide} 🚙:{tieneAsalto}</span>
+                                                </div>
+
+                                                <div style={{ fontSize: '0.7rem', color: enViaje ? '#FF9800' : (enOperacion ? '#F44336' : '#4CAF50'), fontWeight: 'bold' }}>
+                                                    {enViaje ? '🚀 En Tránsito' : enOperacion ? `⚔️ En Op: ${misionActual.titulo}` : '🛰️ Estacionado (Reserva)'}
                                                 </div>
                                             </div>
                                         )

@@ -374,8 +374,19 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                                     const isCore = ['motor_subluz', 'mod_cr', 'casco', 'hiperimpulsor', 'hardware', 'software'].includes(mod.tipo);
                                     return (
                                         <div key={mod.id} style={{ backgroundColor: 'rgba(0,0,0,0.5)', border: `1px solid ${isCore ? '#4CAF50' : colorHolo}`, borderRadius: '6px', padding: '12px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{mod.nombre}</strong>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{mod.nombre}</strong>
+                                                    {esGM && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setEquipoAEditar(mod); setIsModalOpen(true); }} 
+                                                            style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }} 
+                                                            title="Editar Módulo de Jax"
+                                                        >
+                                                            ⚙️
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>🪙 {(mod.precio || 0).toLocaleString('es-CL')}</span>
                                             </div>
                                             <span style={{ color: isCore ? '#4CAF50' : '#FF9800', fontSize: '0.65rem', textTransform: 'uppercase' }}>{isCore ? 'Actualización Core' : 'Módulo en Ranura'}</span>
@@ -405,8 +416,22 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                                 miEquipo.map(mod => {
                                     const isCore = ['motor_subluz', 'mod_cr', 'casco', 'hiperimpulsor', 'hardware', 'software'].includes(mod.tipo);
                                     return (
-                                    <div key={mod.id} style={{ backgroundColor: 'rgba(0,0,0,0.5)', border: `1px solid ${colorHolo}`, borderRadius: '6px', padding: '12px' }}>
-                                        <strong style={{ color: '#fff', fontSize: '0.9rem', display: 'block' }}>{mod.nombre}</strong>
+                                    <div key={mod.id} style={{ backgroundColor: 'rgba(0,0,0,0.5)', border: `1px solid ${colorHolo}`, borderRadius: '6px', padding: '12px' }}>  
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{mod.nombre}</strong>
+                                                {esGM && (
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setEquipoAEditar(mod); setIsModalOpen(true); }} 
+                                                        style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }} 
+                                                        title="Editar Módulo de Jax"
+                                                    >
+                                                        ⚙️
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <span style={{ color: '#4CAF50', fontWeight: 'bold' }}>🪙 {(mod.precio || 0).toLocaleString('es-CL')}</span>
+                                        </div>
                                         <span style={{ color: '#aaa', fontSize: '0.75rem', display: 'block', margin: '5px 0' }}>{mod.descripcion}</span>
                                         <div style={{ fontSize: '0.7rem', color: '#FF9800', marginBottom: '8px' }}>Mano de obra: 🪙 {(mod.costo_instalacion || 1000).toLocaleString('es-CL')}</div>
                                         <button disabled={procesando} onClick={() => solicitarInstalacion(mod, true)} style={{ width: '100%', padding: '8px', backgroundColor: colorHolo, color: '#111', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '4px' }}>

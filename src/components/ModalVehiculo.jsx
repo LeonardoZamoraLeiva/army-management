@@ -2,21 +2,11 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
+import { TAGS_VEHICULOS, ROLES_NAVE, TAMAÑOS_NAVE, ROLES_ASALTO, TRACCION_ASALTO } from '../utils/listasJuego'
 
-const TAGS_VEHICULOS = [
-    { grupo: "Sistemas Defensivos", items: ["Escudos Deflectores", "Blindaje Reactivo", "Camuflaje Óptico", "Contramedidas Electrónicas"] },
-    { grupo: "Movilidad Especial", items: ["Modo Sigilo", "Aterrizaje Forzoso", "Vuelo Atmosférico Avanzado"] },
-    { grupo: "Utilidad y Soporte", items: ["Soporte Vital Extendido", "Sensores Larga Distancia", "Sistema Auto-Reparación", "Compartimento Oculto", "Asientos Eyectores"] }
-];
-
-const ROLES_NAVE = ["Caza Estelar (Combate)", "Carguero (Transporte)", "Exploración (Reconocimiento)", "Nave Capital (Asedio/Comando)"];
-const TAMAÑOS_NAVE = ["Pequeña (Caza/Speeder)", "Mediana (Carguero)", "Grande (Corbeta)", "Colosal (Destructor)"];
-
-const ROLES_ASALTO = ["Tanque (Blindaje Pesado)", "Artillería Móvil (Daño Masivo)", "Transporte de Tropas (APC)", "Reconocimiento (Velocidad)"];
-const TRACCION_ASALTO = ["Orugas (Todo-Terreno)", "Repulsores (Hover/Flotante)", "Caminante (Mecha/Bípedo)", "Ruedas (Terreno Firme)", "Anfibio"];
 
 export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
-    const { recargarTodo, userRole, escuadrones } = useData();
+    const { recargarTodo, userRole, escuadrones, comandantes } = useData();
     const esGM = userRole === 'GM';
 
     const estadoInicial = {
@@ -145,7 +135,7 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                        <div className="grupo-input"><label style={{ color: '#4CAF50' }}>Blindaje Base (Casco):</label><input type="number" name="casco" value={formData.casco} onChange={handleChange} min="1" max="10" /></div>
+                        <div className="grupo-input"><label style={{ color: '#4CAF50' }}>Blindaje (% heridas):</label><input type="number" name="casco" value={formData.casco} onChange={handleChange} min="1" max="10" /></div>
                         <div className="grupo-input"><label style={{ color: '#F44336' }}>Armamento (+TR):</label><input type="number" name="mod_cr" value={formData.mod_cr} onChange={handleChange} step="0.5" /></div>
                         {isNave && (
                             <>
@@ -157,7 +147,16 @@ export default function ModalVehiculo({ isOpen, onClose, vehiculoData }) {
 
                     <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                         <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#FF9800' }}>Slots para Módulos (Jax):</label><input type="number" name="capacidad_mods" value={formData.capacidad_mods} onChange={handleChange} min="0" max="10" style={{ borderColor: '#FF9800' }} /></div>
-                        <div className="grupo-input" style={{ flex: 1 }}><label>Propietario:</label><select name="propietario" value={formData.propietario} onChange={handleChange}><option value="Mercado">🛒 Mercado</option><option value="GM">👑 GM (Oculto)</option></select></div>
+                        <div className="grupo-input" style={{ flex: 1 }}><label>Propietario:</label>
+                            <select name="propietario" value={formData.propietario} onChange={handleChange}>
+                                <option value="Mercado">🛒 Mercado (A la venta)</option>
+                                <option value="GM">👑 GM (Oculto)</option>
+                                <option value="Global">🌐 Público / Global</option>
+                                {comandantes && comandantes.map(c => (
+                                    <option key={c.id} value={c.nombre}>🏳️ {c.nombre}</option>
+                                ))}
+                            </select>                        
+                        </div>
                         <div className="grupo-input" style={{ flex: 1 }}><label style={{ color: '#4CAF50' }}>Valor (🪙):</label><input type="number" name="precio" value={formData.precio} onChange={handleChange} min="0" step="1000" style={{ color: '#4CAF50', fontWeight: 'bold' }} /></div>
                     </div>
 

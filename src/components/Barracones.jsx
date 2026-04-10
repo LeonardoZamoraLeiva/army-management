@@ -157,6 +157,15 @@ export default function Barracones() {
     const abrirModalNuevo = (faccionSugerida) => { setSoldadoParaEditar({ lider: faccionSugerida }); setIsModalOpen(true); };
     const abrirModalEditar = () => { setSoldadoParaEditar(soldadoSeleccionado); setIsModalOpen(true); };
 
+    const crearNuevaFaccion = async () => {
+        const nombre = window.prompt("Nombre del nuevo Comandante/Facción:");
+        if (!nombre) return;
+        try {
+            await addDoc(collection(db, "comandantes"), { nombre, creditos: 0 });
+            recargarTodo();
+        } catch(e) { console.error(e); }
+    };
+
     const porLider = {};
     soldados.forEach(s => {
         const faccion = s.lider || "Libres";
@@ -204,7 +213,7 @@ export default function Barracones() {
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
             <div id="dashboard-barracones" style={{ display: 'flex', gap: '20px' }}>
                 {esGM && (
-                    <button onClick={simularPasoDelTiempo} style={{ position: 'absolute', top: '10px', left: '10px', background: '#F44336', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', zIndex: 100 }}>
+                    <button onClick={simularPasoDelTiempo} style={{ position: 'absolute', top: '900px', left: '10px', background: '#F44336', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', zIndex: 100 }}>
                         ⏱️ DEV: +1 Día
                     </button>
                 )}
@@ -265,8 +274,15 @@ export default function Barracones() {
                                 </div>
                             );
                         })}
-                    </div>
-                </div>
+
+                        
+                </div> {/* Cierre de contenedor-lideres */}
+                    {esGM && (
+                        <div onClick={crearNuevaFaccion} style={{ border: '2px dashed #4CAF50', padding: '15px', marginTop: '15px', textAlign: 'center', color: '#4CAF50', cursor: 'pointer', borderRadius: '8px', fontWeight: 'bold', backgroundColor: 'rgba(76, 175, 80, 0.05)' }}>
+                            + Registrar Nuevo Comandante / Facción
+                        </div>
+                    )}
+                </div> {/* Cierre de columna-lista */}
 
                 <div id="columna-detalle" style={{ flex: 1.5 }}>
                     {!soldadoSeleccionado ? (

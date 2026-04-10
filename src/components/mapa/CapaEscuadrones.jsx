@@ -25,7 +25,7 @@ export function EscuadronEnTransito({ esc, recargarTodo, esGM, userRole, iniciar
                 } catch (error) { console.error("Error al registrar llegada:", error); }
             }
         };
-        const interval = setInterval(updatePosition, 1000); 
+        const interval = setInterval(updatePosition, 60000); 
         return () => clearInterval(interval);
     }, [esc, recargarTodo]);
 

@@ -45,7 +45,7 @@ export default function EsquemaHolografico({ equipado = {}, equipoGlobal = [], n
 
     const REQ_NIVEL = {
         'arma': 1, 'armadura': 1, 'arma_sec': 1, 'cabeza': 1, 
-        'botas': 1, 'pantalones': 5, 'amuleto': 1, 
+        'botas': 1, 'pantalones': 1, 'amuleto': 1, 
         'anillo1': 1, 'anillo2': 1
     };
 

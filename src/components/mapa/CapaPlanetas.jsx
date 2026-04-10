@@ -21,7 +21,12 @@ export function CapaDinamicaPlanetas({ planetas, escuadrones, misiones, planetaV
                 if (zoomActual === -1 && !['Planeta', 'Rele', 'Estacion'].includes(tipo)) return null; 
 
                 const escuadronesAqui = escuadrones.filter(e => String(e.ubicacion_actual_id) === String(planeta.id) && e.estado_movimiento !== 'En Tránsito');
-                const misionesAqui = misiones.filter(m => String(m.ubicacion_id) === String(planeta.id));
+                const misionesAqui = misiones.filter(m => String(m.ubicacion_id) === String(planeta.id) && (m.estado === 'Pendiente'|| m.estado === 'Desplegada'))
+
+
+
+
+
                 const n = escuadronesAqui.length; const y = misionesAqui.length;
 
                 const esSeleccionado = String(planetaVistoId) === String(planeta.id);

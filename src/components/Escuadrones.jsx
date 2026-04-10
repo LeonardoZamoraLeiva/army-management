@@ -413,25 +413,26 @@ export default function Escuadrones() {
                             // 2. Tags de la Nave, Vehículo y Droide
                             const nave = vehiculos.find(v => String(v.id) === String(escuadronActual.nave_id));
                             if(nave) { 
-                                add(`Nave ${nave.entorno}`); 
-                                add(`Motor FTL Clase ${nave.hiperimpulsor}`); 
-                                if(nave.habilidad) nave.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                                add(`🚀 ${nave.atributo_especial || 'Nave Estándar'}`); 
+                                add(`Hyperdrive class ${nave.hiperimpulsor || 'N/A'}`); 
+                                add(`Motor class ${nave.motor_subluz || 'N/A'}`); 
+                                if(nave.habilidad) nave.habilidad.split(',').forEach(add); 
                             }
 
                             const veh = vehiculos.find(v => String(v.id) === String(escuadronActual.vehiculo_id));
                             if(veh) { 
-                                add(`Vehículo ${veh.entorno}`); 
-                                add(`Rol: ${veh.rol}`); 
-                                if(veh.habilidad) veh.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                                add(`🚙 ${veh.atributo_especial || 'Tracción Estándar'}`); 
+                                add(`Rol: ${veh.rol_tactico || 'Asalto'}`); 
+                                if(veh.habilidad) veh.habilidad.split(',').forEach(add); 
                             }
 
                             const dr = vehiculos.find(v => String(v.id) === String(escuadronActual.droide_id));
                             if(dr) { 
-                                add(`Droide ${dr.rol}`); 
-                                if(dr.habilidad) dr.habilidad.split(',').forEach(add); // <-- NUEVA LÍNEA
+                                add(`🤖 Rol: ${dr.rol_tactico || 'Sintético'}`); 
+                                if(dr.habilidad) dr.habilidad.split(',').forEach(add); 
                             }
                             return Object.entries(tagMap).sort((a,b) => b[1] - a[1]);
-                        };
+                        };  
 
                         const tagsActivos = extractTags();
 

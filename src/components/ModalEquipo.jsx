@@ -2,26 +2,11 @@ import { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useData } from '../context/DataContext';
+import { TAGS_PERSONAJES, TAGS_VEHICULOS, ROLES_NAVE, TAMAÑOS_NAVE, ROLES_ASALTO, TRACCION_ASALTO, ROLES_DROIDE } from '../utils/listasJuego'
 
-// 1. LISTA DE TAGS PARA SOLDADOS (Armería)
-const TAGS_PERSONAJES = [
-    { grupo: "Tecnología y Ciencia", items: ["Hackeo", "Ingeniería", "Medicina", "Criptografía", "Astronavegación", "Demoliciones", "Explosivos"] },
-    { grupo: "Infiltración y Subterfugio", items: ["Sigilo", "Infiltración", "Callejeo", "Acróbata", "Francotirador", "Espionaje", "Hurto"] },
-    { grupo: "Combate Especializado", items: ["Artillería pesada", "Combate Cerrado", "Armas Blancas", "Atleta"] },
-    { grupo: "Social y Mando", items: ["Liderazgo", "Intimidación", "Persuasión", "Engaño", "Gestión", "Apostador"] },
-    { grupo: "Conocimiento", items: ["Supervivencia", "Erudito", "Poliglota", "Botánico", "Zoólogo", "Geólogo"] },
-    { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] }
-];
-
-// 2. LISTA DE TAGS PARA VEHÍCULOS/DROIDES (Taller Jax)
-const TAGS_VEHICULOS = [
-    { grupo: "Sistemas Defensivos", items: ["Escudos Deflectores", "Blindaje Reactivo", "Camuflaje Óptico", "Contramedidas Electrónicas"] },
-    { grupo: "Movilidad y Terreno", items: ["Orugas Todo-Terreno", "Propulsores de Salto", "Estabilizadores Gravedad", "Modo Anfibio"] },
-    { grupo: "Utilidad y Soporte", items: ["Soporte Vital Extendido", "Sensores Larga Distancia", "Sistema Auto-Reparación", "Interfaz Slicer (Hackeo)", "Compartimento Oculto", "Asientos Eyectores"] }
-];
 
 export default function ModalEquipo({ isOpen, onClose, equipoData }) {
-    const { recargarTodo, userRole } = useData(); 
+    const { recargarTodo, userRole, comandantes } = useData(); 
     const esGM = userRole === 'GM'; 
     
     const estadoInicial = {
@@ -235,7 +220,19 @@ export default function ModalEquipo({ isOpen, onClose, equipoData }) {
                     {/* BLOQUE COMÚN: DESCRIPCIÓN, ESTADÍSTICAS Y TAGS */}
                     <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                         <div className="grupo-input" style={{ flex: 2, margin: 0 }}><label>Descripción / Lore:</label><input type="text" name="descripcion" value={formData.descripcion || ''} onChange={handleChange} /></div>
-                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Propietario:</label><select name="propietario" value={formData.propietario} onChange={handleChange}><option value="GM">👑 GM (Oculto)</option><option value="Mercado">🛒 Mercado / Jax</option><option value="Global">🌐 Público</option><option value="Cazador">🏳️ Cazador</option><option value="Lucian">🏳️ Lucian</option><option value="Brick">🏳️ Brick</option><option value="William">🏳️ William</option><option value="H">🏳️ H</option><option value="Pelonche (E-20)">🏳️ Pelonche</option></select></div>
+                        
+                        <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Propietario:</label>
+                        
+                        
+                        <select name="propietario" value={formData.propietario} onChange={handleChange}>
+                            <option value="Mercado">🛒 Mercado (A la venta)</option>
+                            <option value="GM">👑 GM (Oculto)</option>
+                            <option value="Global">🌐 Público / Global</option>
+                            {comandantes && comandantes.map(c => (
+                                <option key={c.id} value={c.nombre}>🏳️ {c.nombre}</option>
+                            ))}
+                        </select>                    
+                    </div>
                     </div>
                     
                     <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '15px', borderRadius: '6px', border: `1px solid ${colorTema}44`, marginTop: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>

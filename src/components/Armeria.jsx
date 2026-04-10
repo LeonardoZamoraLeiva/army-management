@@ -34,9 +34,9 @@ const COLOR_RAREZA = {
 
 export default function Armeria() {
     const { soldados, escuadrones, equipo, recargarTodo, user, userRole } = useData();
-    const [filtro, setFiltro] = useState('Arma');
+    const [filtro, setFiltro] = useState('Arma_');
     const [soldadoId, setSoldadoId] = useState('');
-    
+
     const [filtroNombre, setFiltroNombre] = useState('');
     const [filtroComandante, setFiltroComandante] = useState('');
     const [filtroEscuadron, setFiltroEscuadron] = useState('');
@@ -108,8 +108,8 @@ export default function Armeria() {
             rareza: { comun: getStat(e => e.tipo.startsWith('Arma_') && (e.rareza || 'Común') === 'Común'), poco_comun: getStat(e => e.tipo.startsWith('Arma_') && e.rareza === 'Poco Común'), raro: getStat(e => e.tipo.startsWith('Arma_') && e.rareza === 'Raro'), muy_raro: getStat(e => e.tipo.startsWith('Arma_') && e.rareza === 'Muy Raro'), legendario: getStat(e => e.tipo.startsWith('Arma_') && e.rareza === 'Legendario') }
         },
         armaduras: { 
-            total: getStat(e => e.tipo.startsWith('Armadura')),
-            rareza: { comun: getStat(e => e.tipo.startsWith('Armadura') && (e.rareza || 'Común') === 'Común'), poco_comun: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Poco Común'), raro: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Raro'), muy_raro: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Muy Raro'), legendario: getStat(e => e.tipo.startsWith('Armadura') && e.rareza === 'Legendario') }
+            total: getStat(e => e.tipo.startsWith('Armadura_')),
+            rareza: { comun: getStat(e => e.tipo.startsWith('Armadura_') && (e.rareza || 'Común') === 'Común'), poco_comun: getStat(e => e.tipo.startsWith('Armadura_') && e.rareza === 'Poco Común'), raro: getStat(e => e.tipo.startsWith('Armadura_') && e.rareza === 'Raro'), muy_raro: getStat(e => e.tipo.startsWith('Armadura_') && e.rareza === 'Muy Raro'), legendario: getStat(e => e.tipo.startsWith('Armadura_') && e.rareza === 'Legendario') }
         },
         utilidad: { 
             total: getStat(e => e.tipo.startsWith('Utilidad')),
@@ -278,14 +278,14 @@ export default function Armeria() {
                     </div>
                     
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                        <div onClick={() => setFiltro('Arma')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Arma' ? '#F44336' : '#333'}`, boxShadow: filtro === 'Arma' ? '0 0 15px rgba(244, 67, 54, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Arma' ? 1 : 0.5 }}>
-                            <div style={{ color: filtro === 'Arma' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{display: 'flex', alignItems: 'center'}}><RiSwordLine style={{marginRight: '4px'}}/> Arma</span><span style={{ color: filtro === 'Arma' ? '#F44336' : '#555' }}>{renderCount(statsHome.armas.total)}</span></div>
+                        <div onClick={() => setFiltro('Arma')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Arma_' ? '#F44336' : '#333'}`, boxShadow: filtro === 'Arma_' ? '0 0 15px rgba(244, 67, 54, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Arma_' ? 1 : 0.5 }}>
+                            <div style={{ color: filtro === 'Arma_' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{display: 'flex', alignItems: 'center'}}><RiSwordLine style={{marginRight: '4px'}}/> Arma</span><span style={{ color: filtro === 'Arma_' ? '#F44336' : '#555' }}>{renderCount(statsHome.armas.total)}</span></div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.75rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.comun)}</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#4CAF50' }}>P. Común:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.poco_comun)}</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#00BCD4' }}>Raro:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.raro)}</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9C27B0' }}>M. Raro:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.muy_raro)}</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FF9800' }}>Leyenda:</span> <strong style={{ color: filtro === 'Arma' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.legendario)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#4CAF50' }}>P. Común:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.poco_comun)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#00BCD4' }}>Raro:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#9C27B0' }}>M. Raro:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.muy_raro)}</strong></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#FF9800' }}>Leyenda:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.legendario)}</strong></div>
                             </div>
                         </div>
 
