@@ -185,12 +185,22 @@ const handleSubmit = async (e) => {
             };
 
             delete datosGuardar.contratista_select; delete datosGuardar.contratista_custom;
-            delete datosGuardar.recompensa_item_id; // Limpieza de variable vieja
-            delete datosGuardar.recompensas_especiales; // Adiós información adicional
+            delete datosGuardar.recompensa_item_id; 
+            delete datosGuardar.recompensas_especiales; 
 
             if (esEdicion) {
-                // Al editar, renovamos la fecha límite con las horas indicadas en el form
                 datosGuardar.expira_en = Date.now() + milisegundosLimite;
+
+                // --- SOLUCIÓN AL RELOJ: RECALCULAR MILISEGUNDOS EN VIVO ---
+                // Si la misión ya estaba corriendo (tiene ms_ejecucion) y el tiempo original era mayor a 0:
+                if (misionData.ms_ejecucion && Number(misionData.tiempo_ejecucion) > 0) {
+                    // Calculamos la proporción (Ej: 5 días nuevos / 13 días viejos = 0.38)
+                    const ratioModificacion = Number(formData.tiempo_ejecucion) / Number(misionData.tiempo_ejecucion);
+                    // Multiplicamos los milisegundos antiguos por esa proporción y los sobreescribimos
+                    datosGuardar.ms_ejecucion = Math.round(misionData.ms_ejecucion * ratioModificacion);
+                }
+                // -----------------------------------------------------------
+
                 await updateDoc(doc(db, "misiones", misionData.id), datosGuardar);
             }
             else {

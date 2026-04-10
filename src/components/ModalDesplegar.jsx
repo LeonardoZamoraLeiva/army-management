@@ -47,6 +47,9 @@ export const evaluarRequisitos = (esc, mision, soldados, vehiculos, equipo) => {
 
     const nave = vehiculos.find(v => String(v.id) === String(esc.nave_id));
     if (nave) {
+        if (nave.en_taller_hasta && nave.en_taller_hasta > Date.now()) {
+            fallos.push(`La nave [${nave.nombre}] está desarmada en el Taller.`);
+        } else {
         squadPool.tiene_nave = true;
         squadPool.motor_subluz = Math.max(squadPool.motor_subluz, Number(nave.motor_subluz) || 0);
         squadPool.hiperimpulsor = Math.min(squadPool.hiperimpulsor, Number(nave.hiperimpulsor) || 99);
@@ -54,21 +57,30 @@ export const evaluarRequisitos = (esc, mision, soldados, vehiculos, equipo) => {
         if (nave.rol_tactico || nave.clase) squadPool.roles.push(nave.rol_tactico || nave.clase);
         if (nave.habilidad) addPerk(nave.habilidad);
     }
+    }
 
     const droide = vehiculos.find(v => String(v.id) === String(esc.droide_id));
     if (droide) {
+                if (droide.en_taller_hasta && droide.en_taller_hasta > Date.now()) {
+            fallos.push(`El droide [${droide.nombre}] está desensamblado en el Taller.`);
+            } else {
         squadPool.tiene_droide = true;
         if (droide.rol_tactico || droide.clase) squadPool.roles.push(droide.rol_tactico || droide.clase);
         if (droide.habilidad) addPerk(droide.habilidad);
     }
+    }
 
     const asalto = vehiculos.find(v => String(v.id) === String(esc.vehiculo_id));
     if (asalto) {
+        if (asalto.en_taller_hasta && asalto.en_taller_hasta > Date.now()) {
+            fallos.push(`El vehículo [${asalto.nombre}] está desensamblado en el Taller.`);
+            } else {
         squadPool.tiene_asalto = true;
         squadPool.motor_subluz_asalto = Math.max(squadPool.motor_subluz_asalto, Number(asalto.motor_subluz) || 0);
         if (asalto.atributo_especial) squadPool.atributos_especiales.push(asalto.atributo_especial);
         if (asalto.rol_tactico || asalto.clase) squadPool.roles.push(asalto.rol_tactico || asalto.clase);
         if (asalto.habilidad) addPerk(asalto.habilidad);
+    }
     }
 
     reqs.forEach(req => {

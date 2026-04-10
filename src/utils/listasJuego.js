@@ -34,4 +34,14 @@ export const TAGS_DROIDE = [
     { grupo: "Operaciones Especiales", items: ["SuperSentidos", "Regeneración", "Piloto", "Venenos", "Xenobiología"] },
     { grupo: "Extras Raros (SOLO GM)", items: ["Nen", "Suerte", "Biótico", "Psíquico", "Cibernético"] }
 ];
+
 export const ROLES_DROIDE = ["Astromecánico (Navegación/Reparación)", "Protocolo (Traducción/Social)", "Médico (Soporte Vital)", "Seguridad/Combate (Asalto)", "Sonda/Slicer (Hackeo/Exploración)", "Utilidad"];
+
+export const INFRAESTRUCTURA_PLANETARIA = [
+    { id: 'Ninguna', nombre: 'Ninguna (Básica)', efecto: 'Sin bonificaciones.' },
+    { id: 'Hospital', nombre: '🏥 Hospital de Campaña', efecto: '+10% Vel. Curación por nivel.' },
+    { id: 'Astillero', nombre: '🛠️ Astillero Naval', efecto: '+10% Vel. Modificación por nivel.' },
+    { id: 'Comercio', nombre: '🛒 Centro de Comercio', efecto: '-3% Precios por nivel.' }
+];
+
+

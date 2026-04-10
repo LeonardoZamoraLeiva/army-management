@@ -8,7 +8,7 @@ import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function Hangar() {
-    const { vehiculos, userRole, equipo, recargarTodo } = useData();
+    const { vehiculos, escuadrones, misiones, userRole, equipo, recargarTodo } = useData();
     const [tabActiva, setTabActiva] = useState('Transporte');
     const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState(null);
     
@@ -49,6 +49,37 @@ export default function Hangar() {
             setVehiculoSeleccionado(null);
         }
     }, [tabActiva]);
+
+// Revisa si el vehículo puede ser modificado
+    const checkVehiculoBloqueado = (vehiculoId) => {
+        // 0. CHECK DEL TALLER DE JAX (Bloquea incluso al GM para no romper el contador)
+        const vehObj = vehiculos.find(v => String(v.id) === String(vehiculoId));
+        if (vehObj && vehObj.en_taller_hasta && vehObj.en_taller_hasta > Date.now()) {
+            return "El activo se encuentra desensamblado en el Taller Orbital. Debes esperar a que Jax termine las modificaciones.";
+        }
+
+        if (esGM) return false; 
+        // ... (el resto de tu código de escuadrones sigue igual) ...
+        // 1. EL GM HACE LO QUE QUIERE (Pase VIP)
+        if (esGM) return false; 
+
+        // 2. Buscamos si el vehículo está asignado a un escuadrón
+        const escuadron = escuadrones.find(e => 
+            String(e.nave_id) === String(vehiculoId) || 
+            String(e.vehiculo_id) === String(vehiculoId) || 
+            String(e.droide_id) === String(vehiculoId)
+        );
+
+        // 3. Si no está asignado a nadie, está aparcado en el Hangar tomando polvo. Se puede modificar libremente.
+        if (!escuadron) return false;
+
+        // 4. Si está asignado, LA ÚNICA forma de modificarlo es que el escuadrón esté descansando en la base.
+        if (escuadron.estado_movimiento !== 'Estacionado' || escuadron.estado !== 'En Base') {
+            return "El activo pertenece a un escuadrón que se encuentra desplegado o en tránsito. Debe regresar a la base para recibir modificaciones.";
+        }
+
+        return false;
+    };
 
     // Router de Edición: Decide qué modal abrir
     const abrirEdicion = (vehiculo) => {
@@ -190,6 +221,9 @@ export default function Hangar() {
                                         </div>
                                         <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <h4 style={{ margin: '0 0 4px 0', color: esSeleccionado ? colorTema : '#fff', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.nombre}</h4>
+                                            {v.en_taller_hasta && v.en_taller_hasta > Date.now() && (
+                                                <span style={{ fontSize: '0.65rem', color: '#111', backgroundColor: '#FF9800', padding: '2px 4px', borderRadius: '3px', fontWeight: 'bold', marginRight: '5px' }}>🔧 EN TALLER</span>
+                                            )}
                                             <span style={{ fontSize: '0.75rem', color: '#8892b0', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.rol_tactico || v.modelo || 'Clasificado'}</span>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
@@ -234,11 +268,22 @@ export default function Hangar() {
                                     <button className="btn-accion pequeno" style={{ backgroundColor: 'rgba(255, 193, 7, 0.15)', border: '1px solid #FFC107', color: '#FFC107', backdropFilter: 'blur(4px)' }} onClick={() => abrirEdicion(vehiculoSeleccionado)}>⚙️ Ajustes Core</button>
                                 )}
                                 <button 
-                                    onClick={() => setTallerAbierto(true)}
+                                    onClick={() => {
+                                        const motivoBloqueo = checkVehiculoBloqueado(vehiculoSeleccionado.id);
+                                        if (motivoBloqueo) alert(`🔒 ACCESO DENEGADO AL TALLER.\n\n${motivoBloqueo}\nDebes esperar a que regrese a la base.`);
+                                        else setTallerAbierto(true);
+                                    }}
                                     className="btn-accion pequeno" 
-                                    style={{ backgroundColor: `${colorTema}22`, border: `1px solid ${colorTema}`, color: colorTema, textShadow: `0 0 5px ${colorTema}66`, backdropFilter: 'blur(4px)' }}
+                                    style={{ 
+                                        backgroundColor: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? '#333' : `${colorTema}22`, 
+                                        border: `1px solid ${checkVehiculoBloqueado(vehiculoSeleccionado.id) ? '#555' : colorTema}`, 
+                                        color: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? '#888' : colorTema, 
+                                        textShadow: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? 'none' : `0 0 5px ${colorTema}66`, 
+                                        backdropFilter: 'blur(4px)',
+                                        cursor: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? 'not-allowed' : 'pointer'
+                                    }}
                                 >
-                                    🔧 Taller Modular
+                                    {checkVehiculoBloqueado(vehiculoSeleccionado.id) ? '🔒 Taller Bloqueado' : '🔧 Taller Modular'}
                                 </button>
                             </div>
 
@@ -306,7 +351,20 @@ export default function Hangar() {
                             <div>
                                 <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
                                     <span>Sistemas y Módulos Activos</span>
-                                    <span style={{ color: colorTema, fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => setTallerAbierto(true)}>[ Gestionar en Taller ]</span>
+                                    <span 
+                                        style={{ 
+                                            color: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? '#555' : colorTema, 
+                                            fontSize: '0.7rem', 
+                                            cursor: checkVehiculoBloqueado(vehiculoSeleccionado.id) ? 'not-allowed' : 'pointer' 
+                                        }} 
+                                        onClick={() => {
+                                            const motivoBloqueo = checkVehiculoBloqueado(vehiculoSeleccionado.id);
+                                            if (motivoBloqueo) alert(`🔒 ACCESO DENEGADO.\n\n${motivoBloqueo}`);
+                                            else setTallerAbierto(true);
+                                        }}
+                                    >
+                                        [ {checkVehiculoBloqueado(vehiculoSeleccionado.id) ? 'Activo Lejos de Base' : 'Gestionar en Taller'} ]
+                                    </span>
                                 </h4>
                                 {vehiculoSeleccionado.habilidad ? (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>

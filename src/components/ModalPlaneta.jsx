@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../context/DataContext';
+import { INFRAESTRUCTURA_PLANETARIA } from '../utils/listasJuego';
 
 export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
     const { planetas, recargarTodo } = useData();
@@ -13,9 +14,11 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
         tieneRele: false,
         tipo: 'Planeta',
         infraestructura: 'Ninguna', // <-- NUEVA VARIABLE MÉDICA
+        nivel_infraestructura: 1, // <-- NUEVA VARIABLE: Nivel de la instalación
         descripcion: '',
         conexiones: [] 
     };
+
 
     const [formData, setFormData] = useState(estadoInicial);
 
@@ -75,15 +78,29 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
                         <div className="grupo-input"><label>Cuadrante:</label><input name="cuadrante" value={formData.cuadrante} onChange={handleChange} required /></div>
                     </div>
 
-                    {/* SELECTOR DE INFRAESTRUCTURA (HOSPITALES) */}
-                    <div className="grupo-input">
-                        <label style={{ color: '#4CAF50' }}>Infraestructura Táctica:</label>
-                        <select name="infraestructura" value={formData.infraestructura || 'Ninguna'} onChange={handleChange} style={{ borderColor: '#4CAF50', fontWeight: 'bold' }}>
-                            <option value="Ninguna">Ninguna (Básica)</option>
-                            <option value="Hospital">🏥 Hospital de Campaña (Doble Velocidad Curación)</option>
-                            <option value="Astillero">🛠️ Astillero Naval</option>
-                            <option value="Comercio">🛒 Centro de Comercio</option>
-                        </select>
+                    {/* SELECTOR DE INFRAESTRUCTURA CON NIVELES */}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <div className="grupo-input" style={{ flex: 2 }}>
+                            <label style={{ color: '#4CAF50' }}>Infraestructura Táctica:</label>
+                            <select name="infraestructura" value={formData.infraestructura || 'Ninguna'} onChange={handleChange} style={{ borderColor: '#4CAF50', fontWeight: 'bold' }}>
+                                {INFRAESTRUCTURA_PLANETARIA.map(infra => (
+                                    <option key={infra.id} value={infra.id}>{infra.nombre}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        {formData.infraestructura !== 'Ninguna' && (
+                            <div className="grupo-input" style={{ flex: 1 }}>
+                                <label style={{ color: '#4CAF50' }}>Nivel (1-10):</label>
+                                <input 
+                                    type="number" name="nivel_infraestructura" 
+                                    value={formData.nivel_infraestructura || 1} 
+                                    onChange={handleChange} 
+                                    min="1" max="10" 
+                                    style={{ borderColor: '#4CAF50', fontWeight: 'bold', textAlign: 'center' }} 
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="grupo-input" style={{ backgroundColor: '#1a1a24', padding: '10px', borderRadius: '4px', borderLeft: formData.tieneRele ? '3px solid #00BCD4' : '3px solid #555', display: 'flex', alignItems: 'center', gap: '10px' }}>

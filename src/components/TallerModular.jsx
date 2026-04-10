@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { updateDoc, doc } from 'firebase/firestore';
+import { updateDoc, doc, getDoc } from 'firebase/firestore'; // <-- getDoc aquí
 import { db } from '../firebase';
 import * as GiIcons from 'react-icons/gi';
 import ModalEquipo from './ModalEquipo';
 
+
 export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
-    const { equipo, comandantes, userRole, vehiculos, recargarTodo } = useData();
+
+// 👇 TODO ESTO DEBE ESTAR ADENTRO DE LA FUNCIÓN 👇
+    const { equipo, comandantes, userRole, vehiculos, planetas, recargarTodo } = useData();
+    const [msPorDia, setMsPorDia] = useState(86400000); // 1 minuto real por día de juego por defecto
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [equipoAEditar, setEquipoAEditar] = useState(null);
     const [procesando, setProcesando] = useState(false);
@@ -16,6 +20,51 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
     const [hoveredSlot, setHoveredSlot] = useState(null);
     const [navIzq, setNavIzq] = useState({ naves: true, asalto: false, droides: true });
     const [navDer, setNavDer] = useState({ exp: true, jax: true, user: false });
+
+
+    // 2. Función para el GM: Avanzar 1 día a TODOS los vehículos en taller
+    const avanzarDiaGlobal = async () => {
+        if (!esGM) return;
+        setProcesando(true);
+        try {
+            // Filtramos vehículos que tengan un cronómetro activo
+            const enProceso = vehiculos.filter(v => v.en_taller_hasta && v.en_taller_hasta > Date.now());
+            
+            for (let v of enProceso) {
+                // Restamos un día al tiempo de finalización
+                const nuevoTiempo = v.en_taller_hasta - msPorDia;
+                await updateDoc(doc(db, "vehiculos", v.id), { en_taller_hasta: nuevoTiempo });
+            }
+            
+            alert(`🚀 Cronología alterada: Se ha avanzado 1 día en el taller para ${enProceso.length} activos.`);
+            await recargarTodo();
+        } catch (e) { console.error("Error al avanzar tiempo:", e); }
+        setProcesando(false);
+    };
+
+    // Buscar la configuración de tiempo global
+    React.useEffect(() => {
+        const fetchTiempo = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, "configuracion", "tiempo_global"));
+                if (docSnap.exists()) setMsPorDia((docSnap.data().minutosPorDia || 1) * 60 * 1000);
+            } catch(e) {}
+        };
+        fetchTiempo();
+    }, []);
+
+    // --- ESCÁNER GALÁCTICO DE ASTILLEROS ---
+    let maxAstillero = 0; let planetaAstilleroNombre = "";
+    (planetas || []).forEach(p => {
+        if (p.infraestructura === 'Astillero') {
+            const nivel = Number(p.nivel_infraestructura) || 1;
+            if (nivel > maxAstillero) { maxAstillero = nivel; planetaAstilleroNombre = p.nombre; }
+        }
+    });
+    const descuentoAstillero = Math.min(0.9, maxAstillero * 0.10); // Max 90% descuento
+    const factorTiempo = 1 - descuentoAstillero;
+    // ---------------------------------------
+
 
     const esGM = userRole === 'GM';
     const miFaccion = comandantes?.find(c => c.nombre === userRole);
@@ -34,17 +83,38 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
     const totalSlots = slotsBase + slotsComprados;
     const modulosInstalados = vehiculo.modulos_instalados || []; 
     
-    let maxExtras = 0; let precioNuevoSlot = 0;
+// --- LÓGICA DE EXPANSIÓN DE CHASIS ---
+    let maxExtras = 0; 
+    let precioNuevoSlot = 0;
+    let penalizacionPorSlot = 2; // Días extra por cada slot que ya tiene
+
     if (isDroide) {
-        maxExtras = 2; // Los droides son muy modificables
-        precioNuevoSlot = 3000; // Y es mucho más barato forzarlos
+        maxExtras = 3; 
+        precioNuevoSlot = 3000 + (slotsComprados * 2000);
+        penalizacionPorSlot = 2;
     } else {
-        if (slotsBase <= 1) { maxExtras = 0; precioNuevoSlot = Infinity; } 
-        else if (slotsBase >= 2 && slotsBase <= 5) { maxExtras = 1; precioNuevoSlot = 15000; } 
-        else if (slotsBase >= 6) { maxExtras = 2; precioNuevoSlot = 5000; } 
+        // Naves Pequeñas (Cazas, etc)
+        if (slotsBase <= 1) { 
+            maxExtras = 2; 
+            precioNuevoSlot = 25000 + (slotsComprados * 15000); 
+            penalizacionPorSlot = 15; // ¡Súper difícil meter más cosas!
+        } 
+        // Naves Medianas (Cargueros)
+        else if (slotsBase <= 5) { 
+            maxExtras = 3; 
+            precioNuevoSlot = 15000 + (slotsComprados * 10000); 
+            penalizacionPorSlot = 7;
+        } 
+        // Naves Grandes (Naves Capitales)
+        else { 
+            maxExtras = 4; 
+            precioNuevoSlot = 5000 + (slotsComprados * 5000); 
+            penalizacionPorSlot = 2;
+        }
     }
 
     const puedeComprarSlot = slotsComprados < maxExtras;
+    // -------------------------------------
 
     const equipoSeguro = equipo || [];
     let stockJax = equipoSeguro.filter(item => 
@@ -62,41 +132,54 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
     // ==========================================
     // LÓGICA DE MEJORAS EXPERIMENTALES (APUESTAS)
     // ==========================================
+// 1. MEJORAS EXPERIMENTALES
     const solicitarMejoraExperimental = (tipoMejora) => {
         let costo = 0; let probFallo = 0; let nuevoValor = 0; let mensajeExito = ""; let updateData = {};
+        let diasBase = 2; // Tiempo por defecto
 
         if (tipoMejora === 'arma') {
             costo = (vehiculo.mod_cr || 1) * 8000; probFallo = 0.35; nuevoValor = (vehiculo.mod_cr || 0) + 0.25;
             updateData = { mod_cr: nuevoValor }; mensajeExito = `Armas recalibradas. TR +${nuevoValor}.`;
+            diasBase = Math.ceil(nuevoValor) * 2;
         } else if (tipoMejora === 'casco') {
             const bonosPrevios = vehiculo.bono_prevencion || 0; costo = (bonosPrevios + 1) * 5000; probFallo = 0.25; nuevoValor = bonosPrevios + 1;
             updateData = { bono_prevencion: nuevoValor }; mensajeExito = `Chasis reforzado. Prev. extra +${nuevoValor}%.`;
+            diasBase = nuevoValor * 2;
         } else if (tipoMejora === 'hiperimpulsor') {
             costo = 15000; probFallo = 0.50; nuevoValor = Math.max(0.5, (vehiculo.hiperimpulsor || 2) - 0.5); 
             updateData = { hiperimpulsor: nuevoValor }; mensajeExito = `FTL mejorado a Clase ${nuevoValor}.`;
+            diasBase = (4 - nuevoValor) * 5;
         } else if (tipoMejora === 'subluz') {
             costo = (vehiculo.motor_subluz || 1) * 3000; probFallo = 0.20; nuevoValor = (vehiculo.motor_subluz || 1) + 0.5;
             updateData = { motor_subluz: nuevoValor }; mensajeExito = `SubLuz sube a Clase ${nuevoValor}.`;
+            diasBase = Math.ceil(nuevoValor) * 2;
         } else if (tipoMejora === 'software') {
             costo = (vehiculo.software || 1) * 2500; probFallo = 0.30; nuevoValor = (vehiculo.software || 1) + 1;
             updateData = { software: nuevoValor }; mensajeExito = `Overclock exitoso. Software Nv.${nuevoValor}.`;
+            diasBase = nuevoValor * 2;
         } else if (tipoMejora === 'hardware') {
             costo = (vehiculo.hardware || 1) * 2000; probFallo = 0.20; nuevoValor = (vehiculo.hardware || 1) + 1;
             updateData = { hardware: nuevoValor }; mensajeExito = `Servomotores calibrados. Hardware Nv.${nuevoValor}.`;
+            diasBase = nuevoValor * 2;
         }
 
-        if (misCreditos < costo) {
-            setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `No tienes los 🪙 ${costo.toLocaleString('es-CL')} necesarios para esta apuesta.`, color: '#F44336' });
-            return;
-        }
-
-        setAlertaJax({ tipo: 'experimental', titulo: 'MEJORA EXPERIMENTAL', costo, probFallo, updateData, mensajeExito, tipoMejora });
+        if (misCreditos < costo) return setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `Requiere 🪙 ${costo}`, color: '#F44336' });
+        
+        const diasFinales = Math.max(0.1, diasBase * factorTiempo);
+        setAlertaJax({ tipo: 'experimental', titulo: 'MEJORA EXPERIMENTAL', costo, probFallo, updateData, mensajeExito, tipoMejora, diasFinales });
     };
 
     const ejecutarMejoraExperimental = async () => {
         const { costo, probFallo, updateData, mensajeExito } = alertaJax;
         setAlertaJax(null); setProcesando(true);
         const roll = Math.random();
+
+        let vehiculoUpdate = { en_taller_hasta: Date.now() + (alertaJax.diasFinales * msPorDia) }; // <-- Añadido
+        if (isCore) {
+            vehiculoUpdate[mod.tipo] = (mod.mod_cr || mod.reduccion_dmg || mod.valor || 1); 
+        } else {
+            vehiculoUpdate.modulos_instalados = [...modulosInstalados, { nombre: mod.nombre, id: mod.id }];
+        }
         
         try {
             await updateDoc(doc(db, "comandantes", miFaccion.id), { creditos: misCreditos - costo });
@@ -112,32 +195,37 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
         setProcesando(false);
     };
 
+// 2. INSTALAR MÓDULO
     const solicitarInstalacion = (mod, desdeAlmacen = false) => {
         const isCore = ['motor_subluz', 'mod_cr', 'casco', 'hiperimpulsor', 'hardware', 'software'].includes(mod.tipo);
-        if (!isCore && modulosInstalados.length >= totalSlots) {
-            setAlertaJax({ tipo: 'info', titulo: 'LÍMITE ALCANZADO', mensaje: 'No hay ranuras de expansión disponibles.', color: '#FF9800' });
-            return;
-        }
+        if (!isCore && modulosInstalados.length >= totalSlots) return setAlertaJax({ tipo: 'info', titulo: 'LÍMITE ALCANZADO', mensaje: 'Sin ranuras.', color: '#FF9800' });
 
-        const precioCompra = desdeAlmacen ? 0 : (mod.precio || 0);
-        const precioInstalacion = mod.costo_instalacion || (desdeAlmacen ? 1000 : 0); 
-        const precioTotal = precioCompra + precioInstalacion;
+        const precioTotal = (desdeAlmacen ? 0 : (mod.precio || 0)) + (mod.costo_instalacion || (desdeAlmacen ? 1000 : 0)); 
+        if (misCreditos < precioTotal) return setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `Requieres 🪙 ${precioTotal}`, color: '#F44336' });
+
+        let diasBase = 1;
+        if (isCore) {
+            if (mod.tipo === 'hiperimpulsor') diasBase = (4 - Number(mod.valor || mod.mod_cr || 1)) * 5;
+            else diasBase = Number(mod.valor || mod.mod_cr || mod.reduccion_dmg || 1) * 2;
+        } else {
+            const rareza = mod.rareza?.toLowerCase() || 'común';
+            if (rareza === 'legendario' || rareza === 'reliquia') diasBase = 12;
+            else if (rareza === 'muy raro') diasBase = 7;
+            else if (rareza === 'raro') diasBase = 4;
+            else if (rareza === 'poco común') diasBase = 2;
+        }
         
-        if (misCreditos < precioTotal) {
-            setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `Requieres 🪙 ${precioTotal.toLocaleString('es-CL')}.`, color: '#F44336' });
-            return;
-        }
-
-        setAlertaJax({ tipo: 'instalar', titulo: isCore ? 'ACTUALIZAR SISTEMA CORE' : 'INSTALAR MÓDULO DE EXPANSIÓN', mod, desdeAlmacen, precioTotal, isCore });
+        const diasFinales = Math.max(0.1, diasBase * factorTiempo);
+        setAlertaJax({ tipo: 'instalar', titulo: isCore ? 'ACTUALIZAR CORE' : 'INSTALAR MÓDULO', mod, desdeAlmacen, precioTotal, isCore, diasFinales });
     };
 
     const ejecutarInstalacion = async () => {
         const { mod, desdeAlmacen, precioTotal, isCore } = alertaJax;
         setAlertaJax(null); setProcesando(true);
 
-        let vehiculoUpdate = {};
+let vehiculoUpdate = { en_taller_hasta: Date.now() + (alertaJax.diasFinales * msPorDia) }; // <-- Añadido
         if (isCore) {
-            vehiculoUpdate[mod.tipo] = (mod.mod_cr || mod.reduccion_dmg || mod.valor || 1); // Soporta armas, armaduras o data genérica
+            vehiculoUpdate[mod.tipo] = (mod.mod_cr || mod.reduccion_dmg || mod.valor || 1); 
         } else {
             vehiculoUpdate.modulos_instalados = [...modulosInstalados, { nombre: mod.nombre, id: mod.id }];
         }
@@ -154,37 +242,48 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
         setProcesando(false);
     };
 
+// 3. DESINSTALAR (Aplicación Directa)
     const desinstalarModulo = async (modEquipado, indice) => {
         const costoDesinstalacion = isDroide ? 200 : 500;
-        if (misCreditos < costoDesinstalacion) return setAlertaJax({ tipo: 'info', titulo: 'SIN FONDOS', mensaje: `Cuesta 🪙 ${costoDesinstalacion} sacar la pieza sin romperla.`, color: '#F44336' });
+        if (misCreditos < costoDesinstalacion) return setAlertaJax({ tipo: 'info', titulo: 'SIN FONDOS', mensaje: `Cuesta 🪙 ${costoDesinstalacion}`, color: '#F44336' });
         
-        if (!window.confirm(`Jax extraerá [${modEquipado.nombre}] por 🪙 ${costoDesinstalacion}.\n¿Proceder?`)) return;
+        const diasBase = 3; const diasFinales = Math.max(0.1, diasBase * factorTiempo);
+
+        if (!window.confirm(`Extraer [${modEquipado.nombre}] tomará ${diasFinales.toFixed(1)} días y 🪙 ${costoDesinstalacion}.\n¿Proceder?`)) return;
 
         setProcesando(true);
         try {
             await updateDoc(doc(db, "equipo", modEquipado.id), { propietario: userRole });
-            const nuevosMods = [...modulosInstalados];
-            nuevosMods[indice] = null; 
-            const modsLimpios = nuevosMods.filter(m => m !== null);
-
-            await updateDoc(doc(db, "vehiculos", vehiculo.id), { modulos_instalados: modsLimpios });
+            const nuevosMods = [...modulosInstalados]; nuevosMods[indice] = null; const modsLimpios = nuevosMods.filter(m => m !== null);
+            await updateDoc(doc(db, "vehiculos", vehiculo.id), { modulos_instalados: modsLimpios, en_taller_hasta: Date.now() + (diasFinales * msPorDia) });
             await updateDoc(doc(db, "comandantes", miFaccion.id), { creditos: misCreditos - costoDesinstalacion });
-            
-            setVehiculo({ ...vehiculo, modulos_instalados: modsLimpios });
-            setTimeout(() => setAlertaJax({ tipo: 'info', titulo: 'DESINSTALACIÓN EXITOSA', mensaje: `Pieza enviada al almacén.`, color: '#4CAF50' }), 300);
+            setVehiculo({ ...vehiculo, modulos_instalados: modsLimpios, en_taller_hasta: Date.now() + (diasFinales * msPorDia) });
+            setTimeout(() => setAlertaJax({ tipo: 'info', titulo: 'EN PROCESO', mensaje: `La nave quedará inoperativa por ${diasFinales.toFixed(1)} días.`, color: '#4CAF50' }), 300);
             await recargarTodo();
         } catch (e) { console.error(e); }
         setProcesando(false);
     };
 
+// 4. FORZAR RANURA
     const solicitarForzarRanura = () => {
-        if (misCreditos < precioNuevoSlot) return setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `Requiere 🪙 ${precioNuevoSlot.toLocaleString('es-CL')}.`, color: '#F44336' });
-        setAlertaJax({ tipo: 'forzar', titulo: 'ABRIR RANURA DE EXPANSIÓN', precio: precioNuevoSlot });
+        if (misCreditos < precioNuevoSlot) return setAlertaJax({ tipo: 'info', titulo: 'FONDOS INSUFICIENTES', mensaje: `Requiere 🪙 ${precioNuevoSlot}`, color: '#F44336' });
+        let penalizacion = 2; if (slotsBase <= 1) penalizacion = 15; else if (slotsBase <= 5) penalizacion = 7;
+        const diasBase = 10 + (slotsComprados * penalizacion);
+        const diasFinales = Math.max(0.1, diasBase * factorTiempo);
+        setAlertaJax({ tipo: 'forzar', titulo: 'ABRIR RANURA DE EXPANSIÓN', precio: precioNuevoSlot, diasFinales });
     };
 
     const ejecutarForzarRanura = async () => {
         const { precio } = alertaJax;
         setAlertaJax(null); setProcesando(true);
+
+        let vehiculoUpdate = { en_taller_hasta: Date.now() + (alertaJax.diasFinales * msPorDia) }; // <-- Añadido
+        if (isCore) {
+            vehiculoUpdate[mod.tipo] = (mod.mod_cr || mod.reduccion_dmg || mod.valor || 1); 
+        } else {
+            vehiculoUpdate.modulos_instalados = [...modulosInstalados, { nombre: mod.nombre, id: mod.id }];
+        }
+
         try {
             await updateDoc(doc(db, "comandantes", miFaccion.id), { creditos: misCreditos - precio });
             await updateDoc(doc(db, "vehiculos", vehiculo.id), { slots_extra: slotsComprados + 1 });
@@ -237,6 +336,8 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                             <div key={v.id} onClick={() => { setVehiculo(v); setFiltroTienda(null); }} style={{ padding: '8px 12px', margin: '5px 0 0 10px', backgroundColor: v.id === vehiculo.id ? 'rgba(0, 188, 212, 0.4)' : 'rgba(15, 15, 26, 0.6)', borderLeft: `3px solid ${v.id === vehiculo.id ? '#00BCD4' : '#444'}`, cursor: 'pointer', color: '#fff', fontSize: '0.8rem', backdropFilter: 'blur(5px)', borderRadius: '0 4px 4px 0' }}>{v.nombre}</div>
                         ))}
                     </div>
+
+
                 </div>
             </div>
 
@@ -444,14 +545,25 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                     </div>
                 </div>
 
-                <div style={{ pointerEvents: 'auto', backgroundColor: 'rgba(15, 15, 26, 0.9)', border: '1px solid #FF9800', borderRight: '4px solid #FF9800', borderRadius: '8px', padding: '15px', position: 'relative', marginTop: 'auto', boxShadow: '0 5px 15px rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)' }}>
+<div style={{ pointerEvents: 'auto', backgroundColor: 'rgba(15, 15, 26, 0.9)', border: '1px solid #FF9800', borderRight: '4px solid #FF9800', borderRadius: '8px', padding: '15px', position: 'relative', marginTop: 'auto', boxShadow: '0 5px 15px rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)' }}>
                     <div style={{ position: 'absolute', top: '-40px', right: '-15px', width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#fff', border: '3px solid #FF9800', overflow: 'hidden', zIndex: 3, boxShadow: '0 0 15px rgba(255,152,0,0.8)' }}>
                         <img src="/assets/npc_mecanico.png" alt="Jax" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
                     <h3 style={{ margin: '0 0 5px 0', color: '#FF9800', textTransform: 'uppercase', fontSize: '0.85rem', letterSpacing: '1px' }}>Jax</h3>
-                    <p style={{ color: '#ddd', fontSize: '0.8rem', fontStyle: 'italic', margin: 0, lineHeight: '1.4', paddingRight: '50px' }}>
+                    <p style={{ color: '#ddd', fontSize: '0.8rem', fontStyle: 'italic', margin: '0 0 10px 0', lineHeight: '1.4', paddingRight: '50px' }}>
                         "¿Me traes chatarra para soldar o software para freír? Lo que instalo no tiene devolución."
                     </p>
+
+                    {/* BOTÓN DE GM: AVANZAR TIEMPO */}
+                    {esGM && (
+                        <button 
+                            onClick={avanzarDiaGlobal} 
+                            disabled={procesando}
+                            style={{ width: '100%', padding: '6px', background: '#4CAF50', color: '#111', border: 'none', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.7rem', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.5)' }}
+                        >
+                            ⏩ AVANZAR 1 DÍA (MODO GM)
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -473,6 +585,10 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                                 <ul style={{ listStyle: 'none', padding: 0, margin: '15px 0' }}>
                                     <li style={{ marginBottom: '8px' }}>💰 <b>Inversión:</b> 🪙 {alertaJax.costo.toLocaleString('es-CL')}</li>
                                     <li style={{ marginBottom: '8px', color: '#F44336' }}>🎲 <b>Riesgo de Fallo:</b> {alertaJax.probFallo * 100}%</li>
+                                    <li style={{ marginBottom: '8px', color: '#00BCD4' }}>
+                                        ⏱️ <b>Tiempo Estimado:</b> {alertaJax.diasFinales.toFixed(1)} días.
+                                        {maxAstillero > 0 && <span style={{display: 'block', fontSize: '0.7rem', color: '#4CAF50'}}>*(¡{descuentoAstillero*100}% Dcto. por Astillero Nv.{maxAstillero} en {planetaAstilleroNombre}!)*</span>}
+                                    </li>
                                 </ul>
                             </div>
                         ) : alertaJax.tipo === 'instalar' ? (
@@ -481,6 +597,10 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                                 <ul style={{ listStyle: 'none', padding: 0, margin: '15px 0' }}>
                                     <li style={{ marginBottom: '8px' }}>💰 <b>Costo Total:</b> 🪙 {alertaJax.precioTotal.toLocaleString('es-CL')}</li>
                                     <li style={{ marginBottom: '8px', color: '#00BCD4' }}>⚙️ <b>Efecto:</b> {alertaJax.isCore ? 'Sobreescribe el sistema base actual.' : 'Ocupa 1 ranura de expansión.'}</li>
+                                    <li style={{ marginBottom: '8px', color: '#00BCD4' }}>
+                                        ⏱️ <b>Tiempo Estimado:</b> {alertaJax.diasFinales.toFixed(1)} días.
+                                        {maxAstillero > 0 && <span style={{display: 'block', fontSize: '0.7rem', color: '#4CAF50'}}>*(¡{descuentoAstillero*100}% Dcto. por Astillero Nv.{maxAstillero} en {planetaAstilleroNombre}!)*</span>}
+                                    </li>
                                 </ul>
                             </div>
                         ) : alertaJax.tipo === 'forzar' ? (
@@ -489,6 +609,10 @@ export default function TallerModular({ vehiculo, setVehiculo, onClose }) {
                                 <ul style={{ listStyle: 'none', padding: 0, margin: '15px 0' }}>
                                     <li style={{ marginBottom: '8px' }}>💰 <b>Costo del Servicio:</b> 🪙 {alertaJax.precio.toLocaleString('es-CL')}</li>
                                     <li style={{ marginBottom: '8px', color: '#4CAF50' }}>📦 <b>Resultado:</b> +1 Ranura de expansión disponible.</li>
+                                    <li style={{ marginBottom: '8px', color: '#00BCD4' }}>
+                                        ⏱️ <b>Tiempo Estimado:</b> {alertaJax.diasFinales.toFixed(1)} días.
+                                        {maxAstillero > 0 && <span style={{display: 'block', fontSize: '0.7rem', color: '#4CAF50'}}>*(¡{descuentoAstillero*100}% Dcto. por Astillero Nv.{maxAstillero} en {planetaAstilleroNombre}!)*</span>}
+                                    </li>
                                 </ul>
                             </div>
                         ) : null}
