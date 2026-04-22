@@ -23,6 +23,7 @@ export default function ModalMision({ isOpen, onClose, misionData }) {
 
     const estadoInicial = {
         titulo: '', ubicacion_id: '', contratista_select: 'Gremio Aureus', contratista_custom: '',
+        faccion: 'Cazadores',
         descripcion: '', 
         requisitos_tecnicos: [], 
         rango: 'C', peligrosidad: 'Media', horas_limite: 240,
@@ -389,6 +390,21 @@ const handleSubmit = async (e) => {
                         <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                             <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Rango:</label><select name="rango" value={formData.rango || 'C'} onChange={handleChange}><option>E</option><option>D</option><option>C</option><option>B</option><option>A</option><option>S</option><option>SS</option></select></div>
                             <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Peligrosidad:</label><select name="peligrosidad" value={formData.peligrosidad || 'Media'} onChange={handleChange}><option value="Baja">Baja</option><option value="Media">Media</option><option value="Alta">Alta</option><option value="Extrema">Extrema</option></select></div>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                            <div className="grupo-input" style={{ flex: 1, margin: 0 }}>
+                                <label style={{ color: '#E91E63' }}>Historia / Universo de la Misión:</label>
+                                <select 
+                                    name="faccion" 
+                                    value={formData.faccion || 'Cazadores'} 
+                                    onChange={handleChange} 
+                                    style={{ borderColor: '#E91E63', fontWeight: 'bold' }}
+                                >
+                                    <option value="Cazadores">🤠 Cazadores (HxH)</option>
+                                    <option value="URSS">☭ URSS</option>
+                                    <option value="Global">🌐 Evento Global (Ambas Faciones)</option>
+                                </select>
+                            </div>
+                        </div>
                             <div className="grupo-input" style={{ flex: 1, margin: 0 }}><label>Validez (Hrs):</label><input type="number" name="horas_limite" value={formData.horas_limite !== undefined ? formData.horas_limite : 240} onChange={handleChange} required min="1" /></div>                        
                         </div>
 

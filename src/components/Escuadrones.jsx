@@ -63,7 +63,7 @@ export const calcularTREscuadron = (escuadron, soldados, vehiculos, equipo) => {
 };
 
 export default function Escuadrones() {
-    const { escuadrones, soldados, vehiculos, equipo, recargarTodo, userRole } = useData();
+    const { escuadrones, soldados, vehiculos, equipo, comandantes, recargarTodo, userRole } = useData();
     const [escuadronId, setEscuadronId] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [escuadronAEditar, setEscuadronAEditar] = useState(null);
@@ -205,16 +205,29 @@ export default function Escuadrones() {
             if (esc.droide_id) assignedDroids.add(String(esc.droide_id));
         });
 
-        const vehiculosList = vehiculos.filter(v => v.categoria !== 'Droide');
-        const droidesList = vehiculos.filter(v => v.categoria === 'Droide');
-        const faccionBuscada = escuadronActual.faccion?.toLowerCase().trim();
-        const soldadosFac = soldados.filter(s => !faccionBuscada || (s.faccion || s.lider || '').toLowerCase().trim() === faccionBuscada);
+// 1. Solo puedes asignar activos que te pertenecen a ti
+        const misVehiculos = vehiculos.filter(v => v.propietario === userRole);
 
-        const opcionesNave = vehiculosList.filter(v => !assignedVehicles.has(String(v.id)) || String(v.id) === String(nave?.id));
+        // 2. Corregimos la categoría para que no desaparezcan los Terrestres
+        const naveList = misVehiculos.filter(v => v.categoria === 'Nave');
+        const vehiculosList = misVehiculos.filter(v => v.categoria === 'Vehículo' || v.categoria === 'Terrestre');
+        const droidesList = misVehiculos.filter(v => v.categoria === 'Droide');
+        
+        const faccionBuscada = escuadronActual.faccion?.toLowerCase().trim();
+        
+        // Filtro inteligente para los menús desplegables
+        const soldadosFac = soldados.filter(s => {
+            if (!faccionBuscada) return true;
+            const faccionSoldado = s.faccion || comandantes?.find(c => c.nombre === s.lider)?.faccion || 'sin afiliación';
+            return faccionSoldado.toLowerCase().trim() === faccionBuscada;
+        });
+
+        const opcionesNave = naveList.filter(v => !assignedVehicles.has(String(v.id)) || String(v.id) === String(nave?.id));
         const opcionesLider = soldadosFac.filter(s => !assignedSoldiers.has(String(s.id)) || String(s.id) === String(lider?.id));
         const opcionesDroide = droidesList.filter(d => !assignedDroids.has(String(d.id)) || String(d.id) === String(droide?.id));
+        
+        // 3. Corregido el bug de copy-paste (decía nave?.id)
         const opcionesVehiculo = vehiculosList.filter(v => !assignedVehicles.has(String(v.id)) || String(v.id) === String(vehiculo?.id));
-
         const deshabilitar = !permisoSobreActual;
 
         return (

@@ -278,7 +278,7 @@ export default function Armeria() {
                     </div>
                     
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                        <div onClick={() => setFiltro('Arma')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Arma_' ? '#F44336' : '#333'}`, boxShadow: filtro === 'Arma_' ? '0 0 15px rgba(244, 67, 54, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Arma_' ? 1 : 0.5 }}>
+                        <div onClick={() => setFiltro('Arma_')} style={{ backgroundColor: '#111118', padding: '5px', borderRadius: '6px', borderTop: `3px solid ${filtro === 'Arma_' ? '#F44336' : '#333'}`, boxShadow: filtro === 'Arma_' ? '0 0 15px rgba(244, 67, 54, 0.2)' : 'none', cursor: 'pointer', transition: 'all 0.2s ease', opacity: filtro === 'Arma_' ? 1 : 0.5 }}>
                             <div style={{ color: filtro === 'Arma_' ? '#fff' : '#888', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{display: 'flex', alignItems: 'center'}}><RiSwordLine style={{marginRight: '4px'}}/> Arma</span><span style={{ color: filtro === 'Arma_' ? '#F44336' : '#555' }}>{renderCount(statsHome.armas.total)}</span></div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.75rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#aaa' }}>Común:</span> <strong style={{ color: filtro === 'Arma_' ? '#fff' : '#666' }}>{renderCount(statsHome.armas.rareza.comun)}</strong></div>

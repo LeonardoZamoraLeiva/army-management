@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import ModalVehiculo from './ModalVehiculo';
-import ModalDroide from './ModalDroide'; // <-- Añadido
+import ModalDroide from './ModalDroide'; 
 import { FaCog } from 'react-icons/fa';
 import TallerModular from './TallerModular';
 import { updateDoc, doc } from 'firebase/firestore';
@@ -12,15 +12,12 @@ export default function Hangar() {
     const [tabActiva, setTabActiva] = useState('Transporte');
     const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState(null);
     
-    // Estados para Naves/Asalto
     const [isModalVehiculoOpen, setIsModalVehiculoOpen] = useState(false);
     const [vehiculoAEditar, setVehiculoAEditar] = useState(null);
 
-    // Estados para Droides
     const [isModalDroideOpen, setIsModalDroideOpen] = useState(false);
     const [droideAEditar, setDroideAEditar] = useState(null);
 
-    // Estado del Menú Desplegable
     const [menuRegistroAbierto, setMenuRegistroAbierto] = useState(false);
 
     const esGM = userRole === 'GM';
@@ -50,38 +47,24 @@ export default function Hangar() {
         }
     }, [tabActiva]);
 
-// Revisa si el vehículo puede ser modificado
     const checkVehiculoBloqueado = (vehiculoId) => {
-        // 0. CHECK DEL TALLER DE JAX (Bloquea incluso al GM para no romper el contador)
         const vehObj = vehiculos.find(v => String(v.id) === String(vehiculoId));
         if (vehObj && vehObj.en_taller_hasta && vehObj.en_taller_hasta > Date.now()) {
             return "El activo se encuentra desensamblado en el Taller Orbital. Debes esperar a que Jax termine las modificaciones.";
         }
-
         if (esGM) return false; 
-        // ... (el resto de tu código de escuadrones sigue igual) ...
-        // 1. EL GM HACE LO QUE QUIERE (Pase VIP)
-        if (esGM) return false; 
-
-        // 2. Buscamos si el vehículo está asignado a un escuadrón
         const escuadron = escuadrones.find(e => 
             String(e.nave_id) === String(vehiculoId) || 
             String(e.vehiculo_id) === String(vehiculoId) || 
             String(e.droide_id) === String(vehiculoId)
         );
-
-        // 3. Si no está asignado a nadie, está aparcado en el Hangar tomando polvo. Se puede modificar libremente.
         if (!escuadron) return false;
-
-        // 4. Si está asignado, LA ÚNICA forma de modificarlo es que el escuadrón esté descansando en la base.
         if (escuadron.estado_movimiento !== 'Estacionado' || escuadron.estado !== 'En Base') {
             return "El activo pertenece a un escuadrón que se encuentra desplegado o en tránsito. Debe regresar a la base para recibir modificaciones.";
         }
-
         return false;
     };
 
-    // Router de Edición: Decide qué modal abrir
     const abrirEdicion = (vehiculo) => {
         if (vehiculo.categoria === 'Droide') {
             setDroideAEditar(vehiculo);
@@ -92,9 +75,8 @@ export default function Hangar() {
         }
     };
 
-    // Router de Creación: Viene desde el menú desplegable
     const abrirNuevo = (categoria) => {
-        setMenuRegistroAbierto(false); // Cierra el menú al seleccionar
+        setMenuRegistroAbierto(false); 
         if (categoria === 'Droide') {
             setDroideAEditar(null);
             setIsModalDroideOpen(true);
@@ -110,14 +92,12 @@ export default function Hangar() {
 
     return (
         <div style={{ animation: 'fadeIn 0.3s ease', position: 'relative', height: '100%' }}>           
-            {/* CABECERA */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px dashed #3f3f5a', paddingBottom: '15px', marginBottom: '20px' }}>
                 <div>
                     <h2 style={{ margin: 0, color: '#00BCD4', textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 0 10px rgba(0,188,212,0.4)' }}>🛸 Hangar Central</h2>
                     <span style={{ color: '#888', fontSize: '0.85rem', letterSpacing: '1px', textTransform: 'uppercase' }}>Gestión de Activos Motorizados y Sintéticos</span>
                 </div>
                 
-                {/* MENÚ DESPLEGABLE DE REGISTRO */}
                 {esGM && (
                     <div style={{ position: 'relative' }}>
                         <button 
@@ -130,7 +110,6 @@ export default function Hangar() {
                         
                         {menuRegistroAbierto && (
                             <>
-                                {/* Overlay invisible para cerrar al hacer clic fuera */}
                                 <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 99 }} onClick={() => setMenuRegistroAbierto(false)}></div>
                                 
                                 <div style={{ 
@@ -155,7 +134,6 @@ export default function Hangar() {
                 )}
             </div>
 
-            {/* PESTAÑAS (TABS) */}
             <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
                 {[
                     { id: 'Transporte', label: '🚀 Naves de Transporte', col: '#9C27B0' },
@@ -184,10 +162,7 @@ export default function Hangar() {
                 })}
             </div>
 
-            {/* CONTENEDOR PRINCIPAL: 2 COLUMNAS */}
             <div id="dashboard-hangar" style={{ display: 'flex', gap: '20px' }}>
-                
-                {/* COLUMNA IZQUIERDA: Lista Vertical con Scroll */}
                 <div style={{ flex: 1.2, minWidth: 0 }}>
                     <div className="scroll-interno" style={{ 
                         height: '650px', overflowY: 'auto', paddingRight: '10px', 
@@ -200,6 +175,10 @@ export default function Hangar() {
                         ) : (
                             vehiculosFiltrados.map(v => {
                                 const esSeleccionado = vehiculoSeleccionado?.id === v.id;
+                                const esMio = v.propietario === userRole;
+                                // Filtro para ocultar la etiqueta si es GM o del Mercado
+                                const esPublico = !v.propietario || !v.propietario === 'GM' || !v.propietario === 'Mercado';
+
                                 return (
                                     <div 
                                         key={v.id} 
@@ -213,7 +192,8 @@ export default function Hangar() {
                                             borderRight: `1px solid ${esSeleccionado ? colorTema : 'transparent'}`,
                                             borderBottom: `1px solid ${esSeleccionado ? colorTema : 'transparent'}`,
                                             borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s ease',
-                                            boxShadow: esSeleccionado ? `inset 0 0 15px ${colorTema}22` : 'none'
+                                            boxShadow: esSeleccionado ? `inset 0 0 15px ${colorTema}22` : 'none',
+                                            position: 'relative'
                                         }}
                                     >
                                         <div style={{ width: '50px', height: '50px', borderRadius: '4px', overflow: 'hidden', border: `1px solid ${esSeleccionado ? colorTema : '#444'}`, flexShrink: 0 }}>
@@ -221,6 +201,14 @@ export default function Hangar() {
                                         </div>
                                         <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <h4 style={{ margin: '0 0 4px 0', color: esSeleccionado ? colorTema : '#fff', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.nombre}</h4>
+                                            
+                                            {/* ETIQUETA DE DUEÑO EN LA LISTA (Oculta si es Mercado/GM) */}
+                                            {!esPublico && (
+                                                <span style={{ fontSize: '0.65rem', color: '#111', backgroundColor: esMio ? '#4CAF50' : '#888', padding: '2px 4px', borderRadius: '3px', fontWeight: 'bold', marginRight: '5px' }}>
+                                                    👤 {v.propietario}
+                                                </span>
+                                            )}
+
                                             {v.en_taller_hasta && v.en_taller_hasta > Date.now() && (
                                                 <span style={{ fontSize: '0.65rem', color: '#111', backgroundColor: '#FF9800', padding: '2px 4px', borderRadius: '3px', fontWeight: 'bold', marginRight: '5px' }}>🔧 EN TALLER</span>
                                             )}
@@ -237,7 +225,6 @@ export default function Hangar() {
                     </div>
                 </div>
 
-                {/* COLUMNA DERECHA: Dossier del Vehículo */}
                 <div style={{ flex: 1.5 }}>
                     {!vehiculoSeleccionado ? (
                         <div style={{ 
@@ -258,13 +245,11 @@ export default function Hangar() {
                             borderRadius: '8px', padding: '25px',
                             boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8), 0 5px 15px rgba(0,0,0,0.5)'
                         }}>
-                            {/* Brillo Superior */}
                             <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '30px', background: `radial-gradient(ellipse, ${colorTema}22 0%, transparent 70%)`, pointerEvents: 'none' }}></div>
 
-                            {/* Botonera Superior */}
                             <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '10px', zIndex: 10 }}>
                                 <button className="btn-accion pequeno" style={{ backgroundColor: 'rgba(255,255,255,0.1)', border: '1px solid #444', backdropFilter: 'blur(4px)' }} onClick={() => setVehiculoSeleccionado(null)}>✖ Cerrar</button>
-                                {esGM && (
+                                {(esGM || vehiculoSeleccionado.propietario === userRole) && (
                                     <button className="btn-accion pequeno" style={{ backgroundColor: 'rgba(255, 193, 7, 0.15)', border: '1px solid #FFC107', color: '#FFC107', backdropFilter: 'blur(4px)' }} onClick={() => abrirEdicion(vehiculoSeleccionado)}>⚙️ Ajustes Core</button>
                                 )}
                                 <button 
@@ -287,10 +272,17 @@ export default function Hangar() {
                                 </button>
                             </div>
 
-                            {/* Cabecera */}
                             <div style={{ display: 'flex', gap: '20px', borderBottom: '1px dashed rgba(255,255,255,0.1)', paddingBottom: '20px', marginBottom: '20px', marginTop: '10px' }}>
                                 <img src={vehiculoSeleccionado.foto || 'https://via.placeholder.com/150/111118/666666?text=NO+FOTO'} alt="Nave" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px', border: `2px solid ${colorTema}66`, boxShadow: `0 0 15px ${colorTema}22` }} />
                                 <div style={{ flex: 1, paddingRight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                    
+                                    {/* ETIQUETA DE DUEÑO EN EL DOSSIER (Oculta si es Mercado/GM) */}
+                                    {vehiculoSeleccionado.propietario && vehiculoSeleccionado.propietario !== 'GM' && vehiculoSeleccionado.propietario !== 'Mercado' && (
+                                        <span style={{ color: '#888', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px', display: 'block' }}>
+                                            DUEÑO REGISTRADO: <b style={{ color: vehiculoSeleccionado.propietario === userRole ? '#4CAF50' : '#fff' }}>{vehiculoSeleccionado.propietario}</b>
+                                        </span>
+                                    )}
+
                                     <h5 style={{ margin: 0, color: colorTema, textTransform: 'uppercase', letterSpacing: '1px' }}>{vehiculoSeleccionado.rol_tactico || vehiculoSeleccionado.modelo || 'Modelo Desconocido'}</h5>
                                     <h2 style={{ margin: '5px 0', color: '#fff', fontSize: '2.2rem', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{vehiculoSeleccionado.nombre}</h2>
                                     <div style={{ marginTop: '5px' }}>
@@ -301,7 +293,6 @@ export default function Hangar() {
                                 </div>
                             </div>
 
-                            {/* Panel de Atributos Base REDISEÑADO */}
                             <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px' }}>Especificaciones de Chasis</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: 'rgba(15, 20, 30, 0.4)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
                                 
@@ -335,11 +326,9 @@ export default function Hangar() {
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Hyperdrive </span>
                                             <strong style={{ color: '#FFC107', fontSize: '1.1rem' }}>Clase {vehiculoSeleccionado.hiperimpulsor || 2}</strong>
                                         </div>
-                                        {/* MÓDULOS DE EXPANSIÓN */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111', padding: '6px 12px', borderRadius: '4px', borderLeft: `3px solid ${colorTema}` }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111', padding: '6px 12px', borderRadius: '4px', borderLeft: `3px solid ${colorTema}`, gridColumn: 'span 4' }}>
                                         <span style={{ color: '#888', fontSize: '0.8rem' }}>Módulos Expandidos</span>
                                         <div style={{ display: 'flex', gap: '3px' }}>
-                                            {/* Dibujamos círculos para representar los slots totales */}
                                             {Array.from({ length: (vehiculoSeleccionado.capacidad_mods || 0) + (vehiculoSeleccionado.slots_extra || 0) }).map((_, i) => {
                                                 const estaOcupado = vehiculoSeleccionado.modulos_instalados && vehiculoSeleccionado.modulos_instalados[i];
                                                 return (
@@ -354,11 +343,9 @@ export default function Hangar() {
                                         </div>
                                     </div>
                                     </>
-                                    
                                 )}
                             </div>
 
-                            {/* Lore / Descripción */}
                             <div style={{ marginBottom: '20px' }}>
                                 <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px' }}>Archivo Técnico</h4>
                                 <p style={{ fontSize: '0.85rem', color: '#bbb', lineHeight: '1.6', margin: 0, backgroundColor: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '6px', borderLeft: `3px solid ${colorTema}` }}>
@@ -366,7 +353,6 @@ export default function Hangar() {
                                 </p>
                             </div>
 
-                            {/* Tags de Habilidades actuales */}
                             <div>
                                 <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
                                     <span>Sistemas y Módulos Activos</span>
@@ -404,7 +390,6 @@ export default function Hangar() {
                 </div>
             </div>
 
-            {/* Inyección de Modales separados */}
             <ModalVehiculo isOpen={isModalVehiculoOpen} onClose={() => setIsModalVehiculoOpen(false)} vehiculoData={vehiculoAEditar} />
             <ModalDroide isOpen={isModalDroideOpen} onClose={() => setIsModalDroideOpen(false)} droideData={droideAEditar} />
         </div>

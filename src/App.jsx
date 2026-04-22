@@ -14,24 +14,24 @@ import { FaMapLocationDot } from "react-icons/fa6";
 function App() {
   const [vistaActiva, setVistaActiva] = useState('barracones');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [modoRegistro, setModoRegistro] = useState(false); // <--- Controla si abre login o registro
   const [menuRadialOpen, setMenuRadialOpen] = useState(false);
   
-  const { authLoading, user, userRole, logout, comandantes } = useData();
-  const miComandante = comandantes?.find(c => String(c.id) === String(userRole));
+  const { authLoading, user, userRole, logout, comandanteActivo, setComandanteActivo, misPerfiles } = useData();
 
   useEffect(() => {
-    const saltarAArmeria = () => setVistaActiva('armeria');
-    window.addEventListener('salto_armeria', saltarAArmeria);
-    return () => window.removeEventListener('salto_armeria', saltarAArmeria);
+    // Escuchador para abrir el registro desde otros componentes sin alerts
+    const abrirRegistro = () => { setModoRegistro(true); setIsLoginOpen(true); };
+    window.addEventListener('abrir_registro_comandante', abrirRegistro);
+    return () => window.removeEventListener('abrir_registro_comandante', abrirRegistro);
   }, []);
-  
-  if (authLoading) return <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#00BCD4', backgroundColor: '#0a0a0f' }}>Estableciendo conexión...</div>;
+
+  if (authLoading) return <div className="loading-screen">Sincronizando...</div>;
 
   return (
     <>
-      {/* CABECERA RECUPERADA */}
-      <header className="cabecera-principal" style={{ position: 'relative' }}>
-        <h1>Asociación de Cazadores</h1>
+      <header className="cabecera-principal">
+        <h1>Gestor de Tropas</h1>
       </header>
 
       {/* MENÚ RADIAL */}
@@ -58,7 +58,7 @@ function App() {
         </div>
       </div>
 
-      <main className="contenedor-vistas" style={{ paddingTop: '20px', paddingBottom: '80px' }}>
+      <main className="contenedor-vistas">
         {vistaActiva === 'barracones' && <Barracones />}
         {vistaActiva === 'hangar' && <Hangar />}
         {vistaActiva === 'armeria' && <Armeria />}
@@ -66,27 +66,40 @@ function App() {
         {vistaActiva === 'mapa' && <MapaEstelar />}
       </main>
 
+      {/* UI SUPERIOR DERECHA */}
       <div style={{ position: 'absolute', right: '20px', top: '15px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', zIndex: 9000 }}>
             {user ? (
                 <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <span style={{ color: userRole === 'GM' ? '#F44336' : '#4CAF50', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>Sesión: {userRole}</span>
+                        {misPerfiles.length > 0 && (
+                            <select 
+                                value={comandanteActivo?.id || ''}
+                                onChange={(e) => setComandanteActivo(misPerfiles.find(p => p.id === e.target.value))}
+                                style={{ backgroundColor: '#111', color: comandanteActivo?.faccion === 'URSS' ? '#f44336' : '#00BCD4', border: '1px solid #444', borderRadius: '4px', padding: '4px 8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                            >
+                                {misPerfiles.map(p => (
+                                    <option key={p.id} value={p.id}>{p.faccion === 'URSS' ? '☭' : '🤠'} {p.nombre}</option>
+                                ))}
+                            </select>
+                        )}
                         <button onClick={logout} className="btn-accion pequeno" style={{ backgroundColor: '#333', color: '#fff' }}>Desconectar</button>
                     </div>
-                    {miComandante && (
-                        <div style={{ backgroundColor: 'rgba(17, 17, 24, 0.8)', border: '1px solid #FFC107', padding: '2px 10px', borderRadius: '4px', boxShadow: '0 0 10px rgba(255, 193, 7, 0.15)' }}>
-                            <span style={{ color: '#FFC107', fontWeight: 'bold', fontFamily: 'monospace' }}>🪙 {Number(miComandante.creditos || 0).toLocaleString('es-CL')}</span>
+                    {comandanteActivo && (
+                        <div style={{ backgroundColor: 'rgba(17, 17, 24, 0.8)', border: '1px solid #FFC107', padding: '2px 10px', borderRadius: '4px' }}>
+                            <span style={{ color: '#FFC107', fontWeight: 'bold' }}>🪙 {Number(comandanteActivo.creditos || 0).toLocaleString('es-CL')}</span>
                         </div>
                     )}
                 </>
             ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <span style={{ color: '#aaa', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>Invitado</span>
-                    <button onClick={() => setIsLoginOpen(true)} className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#111' }}>Acceso</button>
-                </div>
+                <button onClick={() => { setModoRegistro(false); setIsLoginOpen(true); }} className="btn-accion pequeno" style={{ backgroundColor: '#00BCD4', color: '#111' }}>Acceso</button>
             )}
       </div>
-      <ModalLogin isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
+
+      <ModalLogin 
+        isOpen={isLoginOpen} 
+        onClose={() => { setIsLoginOpen(false); setModoRegistro(false); }} 
+        forzarRegistro={modoRegistro} 
+      />
     </>
   )
 }

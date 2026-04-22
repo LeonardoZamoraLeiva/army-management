@@ -19,7 +19,7 @@ export const obtenerConfigSalud = (estado) => {
 
 export default function Barracones() {
     // 1. AÑADIMOS PLANETAS A LA EXTRACCIÓN
-    const { soldados, escuadrones, equipo, planetas, recargarTodo, userRole } = useData();
+    const { soldados, escuadrones, equipo, planetas, comandantes, recargarTodo, userRole, comandanteActivo } = useData();
     const [soldadoSeleccionado, setSoldadoSeleccionado] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [soldadoParaEditar, setSoldadoParaEditar] = useState(null);
@@ -116,10 +116,18 @@ export default function Barracones() {
     };
 
     useEffect(() => {
-        if (soldados.length > 0 && !inicializado) {
-            const faccionesSet = new Set(soldados.map(s => s.lider || "Libres"));
+        // Ahora nos aseguramos de que el panel se abra incluso si solo hay comandantes sin tropas
+        if (!inicializado && (soldados.length > 0 || (comandantes && comandantes.length > 0))) {
+            const faccionesSet = new Set();
+            
+            // Registramos a todos los comandantes oficiales
+            if (comandantes) comandantes.forEach(c => { if(c.nombre !== 'GM') faccionesSet.add(c.nombre) });
+            // Registramos cualquier otra facción que pueda tener soldados ("Libres", etc)
+            soldados.forEach(s => faccionesSet.add(s.lider || "Libres"));
+
             const estadoInicialColapsos = {};
             faccionesSet.forEach(f => estadoInicialColapsos[f] = true);
+            
             if (userRole !== 'GM' && userRole !== 'Espectador' && faccionesSet.has(userRole)) {
                 estadoInicialColapsos[userRole] = false;
             }
@@ -127,7 +135,7 @@ export default function Barracones() {
             procesarHospital(soldados);
             setInicializado(true);
         }
-    }, [soldados, userRole, inicializado]);
+    }, [soldados, comandantes, userRole, inicializado]);
 
     const simularPasoDelTiempo = async () => {
         if (!window.confirm("⚙️ DEV: ¿Avanzar el reloj biológico 24 horas para todos los heridos?")) return;
@@ -166,12 +174,29 @@ export default function Barracones() {
         } catch(e) { console.error(e); }
     };
 
-    const porLider = {};
+const porLider = {};
+    
+    // 1. Creamos las "cajas" para los comandantes, pero filtramos por historia
+    if (comandantes) {
+        comandantes.forEach(c => {
+            if (c.nombre !== 'GM') {
+                // MODIFICACIÓN AQUÍ: Si soy GM, O si soy Invitado (!comandanteActivo), O si soy de la misma facción
+                if (userRole === 'GM' || !comandanteActivo || c.faccion === comandanteActivo.faccion) {
+                    porLider[c.nombre] = [];
+                }
+            }
+        });
+    }
+
+// 2. Metemos a los soldados (que ya vienen filtrados por el Contexto)
     soldados.forEach(s => {
         const faccion = s.lider || "Libres";
+        // Si el soldado por algún motivo no tiene "caja" creada arriba, la creamos
         if (!porLider[faccion]) porLider[faccion] = [];
         porLider[faccion].push(s);
-    });
+    }); 
+
+    // 3. Ordenamos las tropas dentro de cada caja
     Object.keys(porLider).forEach(faccion => porLider[faccion].sort((a, b) => (a.orden || 0) - (b.orden || 0)));
 
     const faccionesOrdenadas = Object.keys(porLider).sort((a, b) => {
@@ -250,26 +275,37 @@ export default function Barracones() {
                                         )}
                                     </div>
                                     
-                                    {!estaColapsado && (
-                                        <CarruselHorizontal colorTema={esMiFaccion ? "#4CAF50" : "#00BCD4"} className="grid-tropas" contenedorStyle={{ display: 'flex', gap: '12px', width: '100%', padding: '15px 5px 15px 30px' }}>
-                                            {tropas.map(s => {
-                                                const esSeleccionado = soldadoSeleccionado?.id === s.id;
-                                                const configS = obtenerConfigSalud(s.estado_salud);
-                                                let dragClass = (dragTargetId === s.id && dropPosition) ? (dropPosition === 'left' ? 'drop-left' : 'drop-right') : '';
+{!estaColapsado && (
+                                        tropas.length > 0 ? (
+                                            <CarruselHorizontal colorTema={esMiFaccion ? "#4CAF50" : "#00BCD4"} className="grid-tropas" contenedorStyle={{ display: 'flex', gap: '12px', width: '100%', padding: '15px 5px 15px 30px' }}>
+                                                {tropas.map(s => {
+                                                    const esSeleccionado = soldadoSeleccionado?.id === s.id;
+                                                    const configS = obtenerConfigSalud(s.estado_salud);
+                                                    let dragClass = (dragTargetId === s.id && dropPosition) ? (dropPosition === 'left' ? 'drop-left' : 'drop-right') : '';
 
-                                                return (
-                                                    <div key={s.id} draggable={puedeEditar(s)} onDragStart={(e) => handleDragStart(e, s)} onDragOver={(e) => handleDragOverItem(e, s)} onDragLeave={() => setDragTargetId(null)} onDrop={(e) => handleDrop(e, s, faccion)} className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} onClick={() => setSoldadoSeleccionado(s)} style={{ width: '130px', minWidth: '130px', maxWidth: '130px', height: '160px', backgroundColor: esSeleccionado ? 'rgba(0, 188, 212, 0.15)' : 'rgba(20, 25, 35, 0.6)', border: `1px solid ${esSeleccionado ? '#00BCD4' : '#3f3f5a'}`, borderRadius: '8px', backdropFilter: 'blur(4px)', boxShadow: esSeleccionado ? '0 0 15px rgba(0, 188, 212, 0.3)' : 'inset 0 0 15px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 8px', boxSizing: 'border-box', position: 'relative', cursor: 'pointer', transition: 'all 0.2s ease', overflow: 'hidden' }}>
-                                                        <span style={{ position: 'absolute', top: '6px', left: '6px', backgroundColor: '#111', color: '#aaa', fontSize: '0.65rem', padding: '2px 5px', borderRadius: '4px', border: '1px solid #333', zIndex: 2 }}>Lv.{s.nivel || 1}</span>
-                                                        <div title={configS.texto} style={{ position: 'absolute', top: '8px', right: '8px', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: configS.color, boxShadow: `0 0 8px ${configS.color}`, border: '1px solid rgba(255,255,255,0.4)', zIndex: 2 }}></div>
-                                                        <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', marginBottom: '8px', border: `2px solid ${esSeleccionado ? '#00BCD4' : '#444'}`, boxShadow: '0 4px 8px rgba(0,0,0,0.5)', zIndex: 1, marginTop: '5px', flexShrink: 0 }}><img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} alt="perfil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
-                                                        <div style={{ width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'flex-start' }}>
-                                                            <h4 style={{ margin: '0 0 4px 0', fontSize: '0.8rem', color: esSeleccionado ? '#00BCD4' : '#fff', width: '100%', lineHeight: '1.2', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={s.nombre}>{s.nombre}</h4>
-                                                            <p style={{ margin: 0, fontSize: '0.65rem', color: '#888', width: '100%', lineHeight: '1.1', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.clase}</p>
+                                                    return (
+                                                        <div key={s.id} draggable={puedeEditar(s)} onDragStart={(e) => handleDragStart(e, s)} onDragOver={(e) => handleDragOverItem(e, s)} onDragLeave={() => setDragTargetId(null)} onDrop={(e) => handleDrop(e, s, faccion)} className={`chapa-militar ${esSeleccionado ? 'seleccionada' : ''} ${dragClass}`} onClick={() => setSoldadoSeleccionado(s)} style={{ width: '130px', minWidth: '130px', maxWidth: '130px', height: '160px', backgroundColor: esSeleccionado ? 'rgba(0, 188, 212, 0.15)' : 'rgba(20, 25, 35, 0.6)', border: `1px solid ${esSeleccionado ? '#00BCD4' : '#3f3f5a'}`, borderRadius: '8px', backdropFilter: 'blur(4px)', boxShadow: esSeleccionado ? '0 0 15px rgba(0, 188, 212, 0.3)' : 'inset 0 0 15px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 8px', boxSizing: 'border-box', position: 'relative', cursor: 'pointer', transition: 'all 0.2s ease', overflow: 'hidden' }}>
+                                                            <span style={{ position: 'absolute', top: '6px', left: '6px', backgroundColor: '#111', color: '#aaa', fontSize: '0.65rem', padding: '2px 5px', borderRadius: '4px', border: '1px solid #333', zIndex: 2 }}>Lv.{s.nivel || 1}</span>
+                                                            <div title={configS.texto} style={{ position: 'absolute', top: '8px', right: '8px', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: configS.color, boxShadow: `0 0 8px ${configS.color}`, border: '1px solid rgba(255,255,255,0.4)', zIndex: 2 }}></div>
+                                                            <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', marginBottom: '8px', border: `2px solid ${esSeleccionado ? '#00BCD4' : '#444'}`, boxShadow: '0 4px 8px rgba(0,0,0,0.5)', zIndex: 1, marginTop: '5px', flexShrink: 0 }}><img src={s.foto || 'https://via.placeholder.com/150/323245/888888?text=N/A'} alt="perfil" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
+                                                            <div style={{ width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'flex-start' }}>
+                                                                <h4 style={{ margin: '0 0 4px 0', fontSize: '0.8rem', color: esSeleccionado ? '#00BCD4' : '#fff', width: '100%', lineHeight: '1.2', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }} title={s.nombre}>{s.nombre}</h4>
+                                                                <p style={{ margin: 0, fontSize: '0.65rem', color: '#888', width: '100%', lineHeight: '1.1', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.clase}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </CarruselHorizontal>
+                                                    );
+                                                })}
+                                            </CarruselHorizontal>
+                                        ) : (
+                                            <div style={{ padding: '30px', textAlign: 'center', color: '#888', fontStyle: 'italic', backgroundColor: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                                El comandante aún no tiene tropas asignadas bajo su mando.<br/>
+                                                {(esGM || esMiFaccion) && (
+                                                    <button onClick={(e) => { e.stopPropagation(); abrirModalNuevo(faccion); }} style={{ marginTop: '15px', background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                                        + Reclutar Primer Soldado
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )
                                     )}
                                 </div>
                             );
@@ -278,7 +314,7 @@ export default function Barracones() {
                         
                 </div> {/* Cierre de contenedor-lideres */}
                     {esGM && (
-                        <div onClick={crearNuevaFaccion} style={{ border: '2px dashed #4CAF50', padding: '15px', marginTop: '15px', textAlign: 'center', color: '#4CAF50', cursor: 'pointer', borderRadius: '8px', fontWeight: 'bold', backgroundColor: 'rgba(76, 175, 80, 0.05)' }}>
+                        <div onClick={() => window.dispatchEvent(new CustomEvent('abrir_registro_comandante'))} style={{ border: '2px dashed #4CAF50', padding: '15px', marginTop: '15px', textAlign: 'center', color: '#4CAF50', cursor: 'pointer', borderRadius: '8px', fontWeight: 'bold', backgroundColor: 'rgba(76, 175, 80, 0.05)' }}>
                             + Registrar Nuevo Comandante / Facción
                         </div>
                     )}
