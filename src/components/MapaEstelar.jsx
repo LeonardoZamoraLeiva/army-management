@@ -63,6 +63,9 @@ export default function MapaEstelar() {
 
     const [origenMision, setOrigenMision] = useState('planeta');
 
+    // 1. Añade un estado de procesamiento al componente:
+    const [procesandoResolucion, setProcesandoResolucion] = useState(false);
+
     const toggleMenu = (menu) => { if (menuPrincipal === menu) cerrarHUD(); else { setMenuPrincipal(menu); setPlanetaVistoId(null); setMisionVistaId(null); } };
     const cerrarHUD = () => { setMenuPrincipal(null); setPlanetaVistoId(null); setMisionVistaId(null); setModoMoverPines(false); setModoConexion(null); };
     
@@ -188,7 +191,7 @@ useEffect(() => {
         const miEscuadron = escAsignados[0];
         
         // REUTILIZAMOS LA LÓGICA DEL POOL
-        const evaluacion = analizarRequisitos(miEscuadron, mision, soldados, vehiculos, equipo);
+        const evaluacion = evaluarRequisitos(miEscuadron, mision, soldados, vehiculos, equipo);
         
         if (!evaluacion.apto) {
             return alert(`❌ OPERACIÓN DENEGADA.\n\nEl escuadrón no cumple con los requisitos del pool:\n- ` + evaluacion.fallos.join('\n- '));
@@ -222,7 +225,18 @@ useEffect(() => {
     };
 
     const iniciarEjecucionManual = async (misionId) => { await updateDoc(doc(db, "misiones", misionId), { fecha_inicio_ejecucion: Date.now() }); recargarTodo(); };
-    const solicitarAbortoNavegacion = () => setAlertaAborto({ tipo: 'viaje', escuadron: escuadronSeleccionado });
+    const solicitarAbortoNavegacion = () => {
+        // ¿Este escuadrón está volando por una misión oficial?
+        const misionAsignada = misiones.find(m => m.estado === 'Desplegada' && (m.escuadrones_id || []).includes(escuadronSeleccionado.id));
+        
+        if (misionAsignada) {
+            // Si es así, abrimos el menú de abortar misión completo (para liberar la misión)
+            setAlertaAborto({ tipo: 'mision', mision: misionAsignada });
+        } else {
+            // Si es un vuelo libre (navegación manual), abrimos el aborto de viaje
+            setAlertaAborto({ tipo: 'viaje', escuadron: escuadronSeleccionado });
+        }
+    };
     const solicitarAbortoMision = (mision) => setAlertaAborto({ tipo: 'mision', mision });
 
     const eliminarMision = async (mision) => {
@@ -232,13 +246,17 @@ useEffect(() => {
     };
 
     const ejecutarAbortoMapa = async (decision) => {
-        const ahora = Date.now(); const escuadronesAProcesar = alertaAborto.tipo === 'viaje' ? [alertaAborto.escuadron.id] : alertaAborto.mision.escuadrones_id;
+        const ahora = Date.now(); 
+        const escuadronesAProcesar = alertaAborto.tipo === 'viaje' ? [alertaAborto.escuadron.id] : alertaAborto.mision.escuadrones_id;
 
         for (let id of escuadronesAProcesar) {
             const esc = escuadrones.find(e => String(e.id) === String(id));
-            let updateData = alertaAborto.tipo === 'mision' ? { estado: 'En Base' } : {};
+            if (!esc) continue;
 
-            if (esc && esc.estado_movimiento === 'En Tránsito') {
+            // Le decimos al escuadrón que se ponga 'En Base'
+            let updateData = (alertaAborto.tipo === 'mision' || alertaAborto.tipo === 'aborto_local') ? { estado: 'En Base' } : {};
+
+            if (esc.estado_movimiento === 'En Tránsito') {
                 const posActual = calcularPosicionEnRuta(esc, ahora);
                 if (posActual) {
                     if (decision === 'refugio') {
@@ -253,11 +271,15 @@ useEffect(() => {
                         updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: null, coords_espacio_profundo: { y: posActual[0], x: posActual[1] }, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null };
                     }
                 }
-            } else if (decision === 'local') { updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: alertaAborto.mision.ubicacion_id, coords_espacio_profundo: null, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null }; }
+            } else if (decision === 'local') { 
+                // Si ya estaban en posición, se quedan ahí estacionados.
+                updateData = { ...updateData, estado_movimiento: 'Estacionado', ubicacion_actual_id: alertaAborto.mision?.ubicacion_id || esc.ubicacion_actual_id, coords_espacio_profundo: null, ubicacion_destino_id: null, fecha_salida: null, fecha_llegada: null, ruta_visual: null }; 
+            }
             await updateDoc(doc(db, "escuadrones", id), updateData);
         }
 
-        if (alertaAborto.tipo === 'mision') {
+        // AQUÍ ESTABA EL ERROR: Ahora liberamos correctamente la misión en la BD
+        if (alertaAborto.tipo === 'mision' || alertaAborto.tipo === 'aborto_local') {
             if (alertaAborto.eliminarDespues) await deleteDoc(doc(db, "misiones", alertaAborto.mision.id));
             else await updateDoc(doc(db, "misiones", alertaAborto.mision.id), { estado: 'Pendiente', escuadrones_id: [], fecha_despliegue: null, ms_viaje_ida: null, ms_ejecucion: null, auto_ejecutar: null, fecha_inicio_ejecucion: null });
         } else { setEscuadronSeleccionado(null); }
@@ -266,8 +288,15 @@ useEffect(() => {
 
     // --- LÓGICA DE RESOLUCIÓN DE MISIÓN ---
     const resolverMision = async (mision, probExitoReal, crFuerzaTotal) => {
-        const asignados = mision.escuadrones_id || []; if (asignados.length === 0) return alert("No hay tropas asignadas.");
 
+        // --- BLOQUEO DE SEGURIDAD ---
+        if (procesandoResolucion) return; 
+        if (mision.estado === 'Archivada') return; // Si ya se resolvió, abortamos.
+    
+        setProcesandoResolucion(true); // Cerramos el candado
+    // ----------------------------
+    try {
+        const asignados = mision.escuadrones_id || []; if (asignados.length === 0) return alert("No hay tropas asignadas.");
         const exito = (Math.random() * 100) <= probExitoReal; 
         const resultadoTexto = exito ? `Contrato cumplido con éxito. Extracción limpia asegurada.` : `Objetivo fallido. Fuerte resistencia enemiga. Las fuerzas se retiraron bajo fuego.`;
         const dangerStats = DANGER_TABLE[mision.peligrosidad || 'Media'];
@@ -427,6 +456,11 @@ useEffect(() => {
         await updateDoc(doc(db, "misiones", mision.id), { estado: 'Archivada' });
         setReporteAAR({ titulo: mision.titulo, escuadronNombre: nombresEscuadrones.join(" + "), exito, descripcion: resultadoTexto, xp: `+${xpBaseGained} XP`, recompensas: recompensaObtenida, xpEscuadronText: puntosPrestigioDelta > 0 ? 'Prestigio +' : (puntosPrestigioDelta < 0 ? 'Prestigio -' : 'Prestigio ='), bajas: reporteBajasGlobal });
         await recargarTodo();
+        } catch (e) {
+        console.error("Error al resolver misión:", error);
+    } finally {
+        setProcesandoResolucion(false); // Abrimos el candado solo al terminar todo
+    }
     };
 
     const escuadronesOrdenados = [...escuadrones].sort((a, b) => {
@@ -527,7 +561,10 @@ const [ocultarCompletadas, setOcultarCompletadas] = useState(true);
                                         <TarjetaMisionGlobal 
                                             m={misionEnfocada} planetas={planetas} escuadrones={escuadrones} soldados={soldados} vehiculos={vehiculos} equipo={equipo} esGM={esGM} userRole={userRole}
                                             misionExpandida={misionVistaId} setMisionExpandida={(id) => id ? null : volverAPlaneta()} 
-                                            setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} onDragOver={handleDragOver} resolverMision={resolverMision}
+                                            setMisionParaEditar={setMisionParaEditar} setIsModalMisionOpen={setIsModalMisionOpen} setMisionActiva={setMisionActiva} 
+                                            setIsModalDesplegarOpen={setIsModalDesplegarOpen} iniciarEjecucionManual={iniciarEjecucionManual} solicitarAbortoMision={solicitarAbortoMision} 
+                                            setAlertaAborto={setAlertaAborto} eliminarMision={eliminarMision} solicitarDespliegueMision={solicitarDespliegueMision} onDropEscuadron={handleDropEscuadron} 
+                                            onDragOver={handleDragOver} resolverMision={resolverMision} procesandoResolucion={procesandoResolucion}
                                         />
                                     )}
                                 </div>
@@ -789,13 +826,30 @@ const [ocultarCompletadas, setOcultarCompletadas] = useState(true);
                     </div>
                 </div>
             )}
-            {alertaAborto && alertaAborto.tipo === 'mision' && (
+{/* Modal de Aborto Unificado (Misión o Vuelo Libre) */}
+            {alertaAborto && (alertaAborto.tipo === 'mision' || alertaAborto.tipo === 'viaje') && (
                 <div className="modal-alerta-tactica" style={{zIndex: 9999}}>
                     <div className="modal-alerta-caja">
                         <h2 style={{ color: '#F44336', margin: '0 0 10px 0' }}>⚠️ DIRECTIVA DE ABORTO</h2>
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('refugio')}>↩️ Buscar refugio más cercano</button>
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('varado')}>🛑 Detener motores inmediatamente</button>
-                        <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '20px' }}>✖ Cancelar</button>
+                        <p style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '25px' }}>
+                            {alertaAborto.tipo === 'mision' 
+                                ? `¿Qué orden de emergencia debemos enviar a la flota para la operación ${alertaAborto.mision.titulo}?` 
+                                : `¿Qué orden de emergencia debemos enviar a ${alertaAborto.escuadron?.nombre}?`}
+                        </p>
+                        
+                        {/* Verificamos dinámicamente si algún escuadrón está viajando */}
+                        {(alertaAborto.tipo === 'viaje' || (alertaAborto.mision?.escuadrones_id || []).some(id => {
+                            const esc = escuadrones.find(e => String(e.id) === String(id));
+                            return esc && esc.estado_movimiento === 'En Tránsito';
+                        })) ? (
+                            <>
+                                <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('refugio')}>↩️ Buscar refugio en sistema aliado</button>
+                                <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('varado')}>🛑 Detener motores inmediatamente</button>
+                            </>
+                        ) : (
+                            <button className="modal-alerta-btn" onClick={() => ejecutarAbortoMapa('local')} style={{ borderColor: '#FFC107', color: '#FFC107', backgroundColor: '#332200' }}>✅ Confirmar Retirada Local (Quedarse en posición)</button>
+                        )}
+                        <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '20px' }}>✖ Cancelar (Mantener Órdenes)</button>
                     </div>
                 </div>
             )}

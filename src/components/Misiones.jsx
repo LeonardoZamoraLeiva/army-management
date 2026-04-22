@@ -190,7 +190,7 @@ export default function Misiones() {
         const ahora = Date.now();
         
         for (let id of mision.escuadrones_id || []) {
-            const esc = escuadrones.find(e => e.id === id);
+            const esc = escuadrones.find(e => String(e.id) === String(id));
             if (!esc) continue;
 
             let updateData = { estado: 'En Base' }; 
@@ -221,7 +221,7 @@ export default function Misiones() {
                                 ruta_visual: [{y: posActual[0], x: posActual[1]}, {y: nearest.coords[0], x: nearest.coords[1]}]
                             };
                         }
-                    } else {
+                    } else if (decision === 'varado') {
                         updateData = {
                             ...updateData,
                             estado_movimiento: 'Estacionado',
@@ -232,6 +232,15 @@ export default function Misiones() {
                         };
                     }
                 }
+            } else if (decision === 'local') {
+                updateData = {
+                    ...updateData,
+                    estado_movimiento: 'Estacionado',
+                    ubicacion_actual_id: mision.ubicacion_id || esc.ubicacion_actual_id,
+                    coords_espacio_profundo: null,
+                    ubicacion_destino_id: null,
+                    fecha_salida: null, fecha_llegada: null, ruta_visual: null
+                };
             }
             await updateDoc(doc(db, "escuadrones", id), updateData);
         }
@@ -682,15 +691,23 @@ export default function Misiones() {
                             Las fuerzas se retirarán de la operación <b>{alertaAborto.mision.titulo}</b>. ¿Qué orden de emergencia debemos enviar a la flota?
                         </p>
                         
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAborto('refugio')}>
-                            ↩️ Buscar refugio en sistema aliado
-                            <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '4px', textTransform: 'none' }}>El ordenador calculará la ruta al astro más cercano.</div>
-                        </button>
-                        
-                        <button className="modal-alerta-btn" onClick={() => ejecutarAborto('varado')}>
-                            🛑 Detener motores inmediatamente
-                            <div style={{ fontSize: '0.7rem', color: '#aaa', marginTop: '4px', textTransform: 'none' }}>Las naves quedarán varadas a la espera de órdenes.</div>
-                        </button>
+                        {(alertaAborto.mision.escuadrones_id || []).some(id => {
+                            const esc = escuadrones.find(e => String(e.id) === String(id));
+                            return esc && esc.estado_movimiento === 'En Tránsito';
+                        }) ? (
+                            <>
+                                <button className="modal-alerta-btn" onClick={() => ejecutarAborto('refugio')}>
+                                    ↩️ Buscar refugio en sistema aliado
+                                </button>
+                                <button className="modal-alerta-btn" onClick={() => ejecutarAborto('varado')}>
+                                    🛑 Detener motores inmediatamente
+                                </button>
+                            </>
+                        ) : (
+                            <button className="modal-alerta-btn" onClick={() => ejecutarAborto('local')} style={{ borderColor: '#FFC107', color: '#FFC107', backgroundColor: '#332200' }}>
+                                ✅ Confirmar Retirada Local (Quedarse en posición)
+                            </button>
+                        )}
 
                         <button className="modal-alerta-btn seguro" onClick={() => setAlertaAborto(null)} style={{ marginTop: '20px' }}>
                             ✖ Cancelar (Mantener Órdenes)

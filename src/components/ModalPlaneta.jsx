@@ -48,7 +48,12 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
         // --- PARCHE: PLANETA EN USO ---
         const tropasAqui = escuadrones.some(e => String(e.ubicacion_actual_id) === String(planetaEdit.id) || String(e.ubicacion_destino_id) === String(planetaEdit.id));
         if (tropasAqui) return alert("❌ Acceso denegado: Hay escuadrones orbitando, aterrizados o en camino a este sistema. Evacúalos antes de destruir el planeta.");
+        
+        // --- NUEVO: PREVENIR MISIONES HUÉRFANAS ---
+        const misionesAqui = misiones.filter(m => String(m.ubicacion_id) === String(planetaEdit.id) && m.estado !== 'Archivada');
+        if (misionesAqui.length > 0) return alert(`❌ Acceso denegado: Hay ${misionesAqui.length} misiones activas/pendientes en este sistema. Bórralas o reasígnalas primero.`);
         // ------------------------------
+
         if (!window.confirm(`¿Destruir el sistema ${formData.nombre}? ¡Esto borrará las rutas conectadas!`)) return;
         try {
             const promesasLimpieza = planetas
@@ -58,7 +63,7 @@ export default function ModalPlaneta({ isOpen, onClose, coords, planetaEdit }) {
             await deleteDoc(doc(db, "planetas", planetaEdit.id));
             await recargarTodo();
             onClose();
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error("Error eliminando:", error); }
     };
 
     if (!isOpen) return null;

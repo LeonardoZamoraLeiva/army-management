@@ -139,19 +139,20 @@ export default function TarjetaMisionGlobal({
                                             
                                             if (req.tipo === 'droide') {
                                                 renders.push(<div key={req.id}>🤖 Droide Táctico: {req.rol ? `Clase ${req.rol}` : 'Cualquier modelo'}</div>);
-                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>🧠 Protocolo Req: {p.nombre} (Nv.{p.nivel})</div>); });
+                                                
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>🧠 Protocolo Req: {p.nombre} ({p.nivel})</div>); });
                                             }
                                             
                                             if (req.tipo === 'nave') {
-                                                const detalles = [req.motor_subluz ? `Subluz Nv.${req.motor_subluz}+` : '', req.hiperimpulsor ? `Hyperdrive C-${req.hiperimpulsor} o inf.` : '', req.atributo_especial ? `Tamaño: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
+                                                const detalles = [req.motor_subluz ? `Motor Clase ${req.motor_subluz}+` : '', req.hiperimpulsor ? `Hyperdrive Clase ${req.hiperimpulsor} o inf.` : '', req.atributo_especial ? `Tamaño: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
                                                 renders.push(<div key={req.id}>🚀 Vehículo: {detalles || 'Cualquier nave'}</div>);
-                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} (Nv.{p.nivel})</div>); });
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} ({p.nivel})</div>); });
                                             }
 
                                             if (req.tipo === 'asalto') {
-                                                const detalles = [req.motor_subluz ? `Subluz Nv.${req.motor_subluz}+` : '', req.atributo_especial ? `Tracción: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
+                                                const detalles = [req.motor_subluz ? `Motor Clase ${req.motor_subluz}+` : '', req.atributo_especial ? `Tracción: ${req.atributo_especial}` : '', req.rol ? `Rol: ${req.rol}` : ''].filter(Boolean).join(' | ');
                                                 renders.push(<div key={req.id}>🚙 Asalto: {detalles || 'Cualquier vehículo'}</div>);
-                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} (Nv.{p.nivel})</div>); });
+                                                if (req.perks) req.perks.forEach((p, i) => { if(p.nombre) renders.push(<div key={req.id+'-p-'+i} style={{paddingLeft:'15px', color:'#00BCD4', fontSize:'0.7rem'}}>⚙️ Sistema Req: {p.nombre} ({p.nivel})</div>); });
                                             }
                                         });
                                         if (reqsEsp.length > 0) {
@@ -209,7 +210,7 @@ export default function TarjetaMisionGlobal({
                                             if (plan) { tiempoViajeEsc = plan.tiempoDias; tipoViajeEsc = `(${plan.tipo})`; }
                                         }
                                     } else { tiempoViajeEsc = Math.round((m.ms_viaje_ida / 60000) * 10) / 10; }
-                                    return <div key={esc.id} style={{ fontSize: '0.8rem', color: '#fff', borderBottom: '1px solid #222', paddingBottom: '2px' }}>🛡️ {esc.nombre} <span style={{color: '#888'}}>(Viaje: {tiempoViajeEsc > 0 ? `${tiempoViajeEsc} mins ${tipoViajeEsc}` : 'En posición'})</span></div>;
+                                    return <div key={esc.id} style={{ fontSize: '0.8rem', color: '#fff', borderBottom: '1px solid #222', paddingBottom: '2px' }}>🛡️ {esc.nombre} <span style={{color: '#888'}}>(Viaje: {tiempoViajeEsc > 0 ? `${tiempoViajeEsc} días ${tipoViajeEsc}` : 'En posición'})</span></div>;
                                 })}
                             </div>
                         ) : ( <div style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic', marginBottom: '10px' }}>Arrastra escuadrones aquí para asignar.</div> )}
@@ -241,7 +242,23 @@ export default function TarjetaMisionGlobal({
                         {estaDesplegada && faseActual === 'esperando' && <button className="btn-accion" style={{ width: '100%', backgroundColor: '#4CAF50', color: '#fff' }} onClick={(e) => { e.stopPropagation(); iniciarEjecucionManual(m.id); }}>▶ INICIAR OPERACIÓN</button>}
                         {estaDesplegada && faseActual === 'ida' && <button className="btn-accion rojo" style={{ flex: 1 }} onClick={(e) => { e.stopPropagation(); solicitarAbortoMision(m); }}>🚨 Abortar Viaje</button>}
                         {estaDesplegada && faseActual === 'esperando' && <button className="btn-accion rojo" style={{ flex: 1 }} onClick={(e) => { e.stopPropagation(); setAlertaAborto({ tipo: 'aborto_local', mision: m, planeta: nombrePlaneta }); }}>🛡️ Retirar Tropas</button>}
-                        {estaDesplegada && faseActual === 'lista' && <button className="btn-accion" style={{ flex: 1, backgroundColor: '#9C27B0', color: '#fff', fontSize: '0.85rem' }} onClick={(e) => { e.stopPropagation(); resolverMision(m, probExito, crFuerzaTotal); }}>▶ Resolver Misión</button>}
+                        {estaDesplegada && faseActual === 'lista' && (
+                            <button 
+                                className="btn-accion" 
+                                disabled={procesandoResolucion}
+                                style={{ 
+                                    flex: 1, 
+                                    backgroundColor: procesandoResolucion ? '#444' : '#9C27B0', 
+                                    color: '#fff', 
+                                    fontSize: '0.85rem',
+                                    cursor: procesandoResolucion ? 'not-allowed' : 'pointer',
+                                    opacity: procesandoResolucion ? 0.7 : 1
+                                }} 
+                                onClick={(e) => { e.stopPropagation(); resolverMision(m, probExito, crFuerzaTotal); }}
+                            >
+                                {procesandoResolucion ? '⌛ PROCESANDO...' : '▶ Resolver Misión'}
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

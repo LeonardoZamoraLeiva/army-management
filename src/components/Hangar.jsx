@@ -335,7 +335,26 @@ export default function Hangar() {
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase' }}>Hyperdrive </span>
                                             <strong style={{ color: '#FFC107', fontSize: '1.1rem' }}>Clase {vehiculoSeleccionado.hiperimpulsor || 2}</strong>
                                         </div>
+                                        {/* MÓDULOS DE EXPANSIÓN */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111', padding: '6px 12px', borderRadius: '4px', borderLeft: `3px solid ${colorTema}` }}>
+                                        <span style={{ color: '#888', fontSize: '0.8rem' }}>Módulos Expandidos</span>
+                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                            {/* Dibujamos círculos para representar los slots totales */}
+                                            {Array.from({ length: (vehiculoSeleccionado.capacidad_mods || 0) + (vehiculoSeleccionado.slots_extra || 0) }).map((_, i) => {
+                                                const estaOcupado = vehiculoSeleccionado.modulos_instalados && vehiculoSeleccionado.modulos_instalados[i];
+                                                return (
+                                                    <div key={i} title={estaOcupado ? `Ocupado: ${vehiculoSeleccionado.modulos_instalados[i].nombre}` : 'Ranura libre'} style={{ 
+                                                        width: '12px', height: '12px', borderRadius: '50%', 
+                                                        backgroundColor: estaOcupado ? colorTema : 'transparent',
+                                                        border: `1px solid ${colorTema}`,
+                                                        boxShadow: estaOcupado ? `0 0 5px ${colorTema}` : 'none'
+                                                    }} />
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                     </>
+                                    
                                 )}
                             </div>
 

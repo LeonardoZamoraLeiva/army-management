@@ -38,7 +38,7 @@ export function EscuadronEnTransito({ esc, recargarTodo, esGM, userRole, iniciar
             {coordsRuta.length > 0 && <Polyline positions={coordsRuta} color={colorEstela} weight={3} dashArray="5, 10" className="ruta-animada" opacity={0.9} />}
             <CircleMarker center={pos} radius={6} pathOptions={{ color: '#fff', fillColor: colorEstela, fillOpacity: 1, weight: 2 }} eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); if (esGM || esc.faccion === userRole) iniciarNavegacion(esc); } }}>
                 <Tooltip direction="bottom" offset={[0, 5]}>
-                    <div style={{ textAlign: 'center' }}><strong>{esc.nombre}</strong><br/><span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>ETA: {eta.toFixed(1)} mins</span></div>
+                    <div style={{ textAlign: 'center' }}><strong>{esc.nombre}</strong><br/><span style={{ color: colorEstela, fontSize: '0.8rem', fontWeight: 'bold' }}>ETA: {eta.toFixed(1)} minutos</span></div>
                 </Tooltip>
             </CircleMarker>
         </div>
