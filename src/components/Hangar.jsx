@@ -23,7 +23,10 @@ export default function Hangar() {
     const esGM = userRole === 'GM';
     const [tallerAbierto, setTallerAbierto] = useState(false);
 
-    const vehiculosFiltrados = vehiculos.filter(v => {
+const vehiculosFiltrados = vehiculos.filter(v => {
+        // --- NUEVA REGLA: Ocultar stock del GM/Mercado a jugadores en esta vista ---
+        if (userRole !== 'GM' && (v.propietario === 'GM' || v.propietario === 'Mercado')) return false;
+
         if (tabActiva === 'Transporte') return v.categoria === 'Nave';
         if (tabActiva === 'Asalto') return v.categoria === 'Terrestre' || v.categoria === 'Vehículo';
         if (tabActiva === 'Droides') return v.categoria === 'Droide';

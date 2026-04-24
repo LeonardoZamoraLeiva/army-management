@@ -191,10 +191,13 @@ const porLider = {};
 // 2. Metemos a los soldados (que ya vienen filtrados por el Contexto)
     soldados.forEach(s => {
         const faccion = s.lider || "Libres";
-        // Si el soldado por algún motivo no tiene "caja" creada arriba, la creamos
+        
+        // --- NUEVA REGLA: Ocultar tropas del GM/Mercado del tablón de jugadores ---
+        if (userRole !== 'GM' && (faccion === 'GM' || faccion === 'Mercado')) return;
+
         if (!porLider[faccion]) porLider[faccion] = [];
         porLider[faccion].push(s);
-    }); 
+    });
 
     // 3. Ordenamos las tropas dentro de cada caja
     Object.keys(porLider).forEach(faccion => porLider[faccion].sort((a, b) => (a.orden || 0) - (b.orden || 0)));

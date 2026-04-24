@@ -101,7 +101,7 @@ export const DataProvider = ({ children }) => {
         return {
             ...data,
             soldados: data.soldados.filter(s => esDeMiHistoria(s.lider || s.faccion)),
-            vehiculos: data.vehiculos.filter(v => esDeMiHistoria(v.propietario || v.faccion || v.lider)),
+            vehiculos: data.vehiculos.filter(v => esDeMiHistoria(v.propietario || v.faccion || v.lider) || v.propietario === 'GM' || v.propietario === 'Mercado'),
             escuadrones: data.escuadrones.filter(esEscuadronDeMiHistoria),
             // EQUIPO: Aquí SÍ permitimos ver lo del GM para que las recompensas de misión funcionen
             equipo: data.equipo.filter(e => e.propietario === comandanteActivo.nombre || e.propietario === 'GM' || e.propietario === 'Mercado'),

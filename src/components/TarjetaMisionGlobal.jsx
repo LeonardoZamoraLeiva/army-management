@@ -8,13 +8,18 @@ export default function TarjetaMisionGlobal({
     m, planetas, escuadrones, soldados, vehiculos, equipo, esGM, userRole, 
     misionExpandida, setMisionExpandida, setMisionParaEditar, setIsModalMisionOpen, 
     setMisionActiva, setIsModalDesplegarOpen, iniciarEjecucionManual, solicitarAbortoMision, 
-    setAlertaAborto, eliminarMision, solicitarDespliegueMision, onDropEscuadron, onDragOver, resolverMision 
+    setAlertaAborto, eliminarMision, solicitarDespliegueMision, onDropEscuadron, onDragOver, resolverMision,
+    procesandoResolucion = false //
 }) {
     const [ahora, setAhora] = useState(Date.now());
     useEffect(() => {
         const timer = setInterval(() => setAhora(Date.now()), 1000);
         return () => clearInterval(timer);
     }, []);
+
+    // --- NUEVA LÓGICA DE ESTADOS ---
+    const estaArchivada = m.estado === 'Archivada' || m.estado === 'Completada';
+    if (estaArchivada) return null;
 
     const isExpanded = misionExpandida === m.id;
     const planetaDestino = planetas.find(p => String(p.id) === String(m.ubicacion_id));
@@ -27,13 +32,15 @@ export default function TarjetaMisionGlobal({
 
     const arrAsignados = m.escuadrones_id || [];
     const escuadronesAsignados = arrAsignados.map(id => escuadrones.find(e => String(e.id) === String(id))).filter(Boolean);
-    const esNueva = arrAsignados.length === 0;
-    const estaPreparando = arrAsignados.length > 0 && !m.fecha_despliegue;
-    const estaDesplegada = !!m.fecha_despliegue;
-
+    const esNueva = arrAsignados.length === 0 && !estaArchivada;
+    const estaPreparando = arrAsignados.length > 0 && !m.fecha_despliegue && !estaArchivada;
+    const estaDesplegada = !!m.fecha_despliegue && !estaArchivada;
     let expirada = false; let tiempoRestanteStr = "00:00:00"; let faseActual = ''; let pctProgreso = 0; 
 
-    if (!estaDesplegada) {
+// Lógica visual del tiempo y el progreso
+    if (estaArchivada) {
+        faseActual = 'archivada'; tiempoRestanteStr = "CERRADA"; pctProgreso = 100;
+    } else if (!estaDesplegada) {
         if (m.expira_en) {
             const diff = m.expira_en - ahora;
             if (diff <= 0) expirada = true;
@@ -44,7 +51,7 @@ export default function TarjetaMisionGlobal({
         const msViajeIda = m.ms_viaje_ida || 0;
         const msEjecucion = m.ms_ejecucion || 60000;
 
-        if (msViajeTranscurridos < msViajeIda) {
+        if (msViajeTranscurridos < msViajeIda) { 
             faseActual = 'ida'; tiempoRestanteStr = formatoTiempo(msViajeIda - msViajeTranscurridos); pctProgreso = Math.min(100, (msViajeTranscurridos / msViajeIda) * 100);
         } else {
             if (m.auto_ejecutar || m.fecha_inicio_ejecucion) {
@@ -64,15 +71,22 @@ export default function TarjetaMisionGlobal({
     const tiempoEjecucionDias = Number(m.tiempo_ejecucion) || 1;
 
     let crFuerzaTotal = 0, probExito = 0;
-    if (!esNueva) {
+if (!esNueva && !estaArchivada) {
         let moralPromedio = 0;
         escuadronesAsignados.forEach(esc => { crFuerzaTotal += calcularTREscuadron(esc, soldados, vehiculos, equipo); moralPromedio += getMoralData(esc.moral).mod; });
         if (escuadronesAsignados.length > 0) moralPromedio = Math.round(moralPromedio / escuadronesAsignados.length);
+        
+        // --- NUEVA MECÁNICA: BONO DE OPERACIÓN CONJUNTA ---
+        // Otorga un +5% extra de probabilidad de éxito por cada escuadrón de apoyo adicional
+        const bonoConjunta = escuadronesAsignados.length > 1 ? (escuadronesAsignados.length - 1) * 5 : 0; 
+        
         const baseProb = { 'E': 95, 'D': 95, 'C': 95, 'B': 90, 'A': 90, 'S': 80, 'SS': 50 }[m.rango] || 80;
         const maxProb  = { 'E': 99, 'D': 99, 'C': 95, 'B': 95, 'A': 90, 'S': 85, 'SS': 80 }[m.rango] || 95;
         const ratio_poder = Math.max(0.5, crFuerzaTotal / (m.cr_req || 1));
         const modificadorPoder = (ratio_poder - 1) * 35; 
-        probExito = Math.min(maxProb, Math.max(5, baseProb + Math.round(modificadorPoder) + moralPromedio));
+        
+        // Sumamos el bonoConjunta al cálculo final
+        probExito = Math.min(maxProb, Math.max(5, baseProb + Math.round(modificadorPoder) + moralPromedio + bonoConjunta));
     }
 
     const handleToggle = (e) => { e.stopPropagation(); setMisionExpandida(isExpanded ? null : m.id); };
@@ -100,12 +114,12 @@ export default function TarjetaMisionGlobal({
 
     return (
         <div 
-            style={{ position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: isExpanded ? 'rgba(26, 26, 36, 0.9)' : 'rgba(26, 26, 46, 0.6)', padding: '12px', borderRadius: '6px', marginBottom: '12px', borderTop: isExpanded ? `4px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : '#00BCD4')}` : 'none', borderLeft: isExpanded ? 'none' : `4px solid ${estaDesplegada ? '#F44336' : '#FFC107'}`, cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }} 
+            style={{ position: 'relative', width: '100%', boxSizing: 'border-box', backgroundColor: isExpanded ? 'rgba(26, 26, 36, 0.9)' : 'rgba(26, 26, 46, 0.6)', padding: '12px', borderRadius: '6px', marginBottom: '12px', borderTop: isExpanded ? `4px solid ${esNueva ? '#F44336' : (estaPreparando ? '#FF9800' : (estaArchivada ? '#555' : '#00BCD4'))}` : 'none', borderLeft: isExpanded ? 'none' : `4px solid ${estaArchivada ? '#555' : (estaDesplegada ? '#F44336' : '#FFC107')}`, cursor: 'pointer', transition: 'background-color 0.2s', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }} 
             onClick={handleToggle} onDragOver={onDragOver} onDrop={(e) => onDropEscuadron && onDropEscuadron(e, m)}
         >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '24px', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, paddingRight: '10px' }}>
-                    <div className="texto-truncado" style={{ fontWeight: 'bold', fontSize: '0.9rem', color: expirada ? '#888' : '#fff', textDecoration: expirada ? 'line-through' : 'none' }} title={m.titulo}>{m.titulo}</div>
+                    <div className="texto-truncado" style={{ fontWeight: 'bold', fontSize: '0.9rem', color: expirada ? '#888' : (estaArchivada ? '#888':'#fff'), textDecoration: expirada ? 'line-through' : 'none' }} title={m.titulo}>{m.titulo}</div>
                     {esGM && (
                         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                             <button onClick={(e) => { e.stopPropagation(); setMisionParaEditar(m); setIsModalMisionOpen(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.8rem', opacity: 0.6 }} title="Editar">✏️</button>
@@ -194,10 +208,26 @@ export default function TarjetaMisionGlobal({
                             {m.recompensas_especiales && <div style={{ color: '#9C27B0', fontWeight: 'bold', marginTop: '4px' }}>✨ {m.recompensas_especiales}</div>}
                         </div>
                     </div>
-
+                    
                     <div style={{ backgroundColor: 'rgba(17, 17, 17, 0.8)', padding: '10px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }}>
-                        {escuadronesAsignados.length > 0 ? (
+                    
+                    {!estaDesplegada && !estaArchivada && (
+                        <div className="zona-drop-escuadron" onDragOver={onDragOver} onDrop={(e) => onDropEscuadron(e, m)} style={{ marginTop: '15px', padding: '15px', border: '1px dashed #555', borderRadius: '8px', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                            <span style={{ color: '#888', fontSize: '0.85rem' }}>Arrástre un Escuadrón aquí para asignarlo a esta operación.</span>
+                        </div>
+                    )}
+                    
+                       {escuadronesAsignados.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
+                                
+                                {/* --- ETIQUETA DE OPERACIÓN CONJUNTA --- */}
+                                {escuadronesAsignados.length > 1 && (
+                                    <div style={{ backgroundColor: '#00BCD4', color: '#111', fontSize: '0.7rem', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', letterSpacing: '1px', textAlign: 'center', marginBottom: '8px' }}>
+                                        🤝 OPERACIÓN CONJUNTA (+{(escuadronesAsignados.length - 1) * 5}% ÉXITO)
+                                    </div>
+                                )}
+                                {/* -------------------------------------- */}
+
                                 {escuadronesAsignados.map(esc => {
                                     let tiempoViajeEsc = 0; let tipoViajeEsc = "";
                                     if (!estaDesplegada) {
@@ -222,18 +252,19 @@ export default function TarjetaMisionGlobal({
                         </div>
                     </div>
 
-                    {estaDesplegada && (
+                    {(estaDesplegada || estaArchivada) && (
                         <div style={{ width: '100%', marginTop: '8px', backgroundColor: '#111', borderRadius: '4px', overflow: 'hidden', position: 'relative', border: '1px solid #333' }}>
-                            <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pctProgreso}%`, backgroundColor: faseActual === 'ida' ? 'rgba(0, 188, 212, 0.25)' : (faseActual === 'ejecutando_o_lista' ? 'rgba(244, 67, 54, 0.35)' : 'rgba(76, 175, 80, 0.3)'), transition: 'width 1s linear' }}></div>
-                            <div style={{ position: 'relative', zIndex: 1, padding: '6px', fontSize: '0.75rem', fontWeight: 'bold', color: faseActual === 'esperando' ? '#FFC107' : (faseActual === 'ida' ? '#00BCD4' : (faseActual === 'lista' ? '#4CAF50' : '#F44336')) }}>
+                            <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${pctProgreso}%`, backgroundColor: estaArchivada ? 'rgba(85, 85, 85, 0.5)' : (faseActual === 'ida' ? 'rgba(0, 188, 212, 0.25)' : (faseActual === 'ejecutando_o_lista' ? 'rgba(244, 67, 54, 0.35)' : 'rgba(76, 175, 80, 0.3)')), transition: 'width 1s linear' }}></div>
+                            <div style={{ position: 'relative', zIndex: 1, padding: '6px', fontSize: '0.75rem', fontWeight: 'bold', color: estaArchivada ? '#aaa' : (faseActual === 'esperando' ? '#FFC107' : (faseActual === 'ida' ? '#00BCD4' : (faseActual === 'lista' ? '#4CAF50' : '#F44336'))) }}>
                                 {faseActual === 'ida' && `🚀 EN TRÁNSITO (${tiempoRestanteStr})`}
                                 {faseActual === 'esperando' && `🛡️ ${tiempoRestanteStr}`}
                                 {faseActual === 'ejecutando_o_lista' && `⚔️ EJECUTANDO OPERACIÓN (${tiempoRestanteStr})`}
                                 {faseActual === 'lista' && `✅ OPERACIÓN FINALIZADA`}
+                                {faseActual === 'archivada' && `📁 REGISTRO ARCHIVADO`}
                             </div>
                         </div>
                     )}
-
+                    {!estaArchivada && (
                     <div style={{ display: 'flex', gap: '10px', marginTop: '5px', flexWrap: 'wrap', width: '100%' }}>
                         {!estaDesplegada && esNueva && <button className="btn-accion" style={{ flex: 1, backgroundColor: expirada ? '#333' : '#F44336', color: expirada ? '#888' : '#fff', cursor: expirada ? 'not-allowed' : 'pointer' }} onClick={(e) => { e.stopPropagation(); if (!expirada) { setMisionActiva(m); setIsModalDesplegarOpen(true); } }} disabled={expirada}>{expirada ? "Expirado" : "Asignar Fuerzas"}</button>}
                         {!estaDesplegada && estaPreparando && (
@@ -260,6 +291,7 @@ export default function TarjetaMisionGlobal({
                             </button>
                         )}
                     </div>
+            )}
                 </div>
             )}
         </div>
